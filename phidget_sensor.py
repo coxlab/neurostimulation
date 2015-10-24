@@ -116,13 +116,6 @@ pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
 pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
 frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
 
-# parser = optparse.OptionParser()
-# parser.add_option('--ch', action="store", dest="channel_num", default="1", help="output channel for stimulation")
-# parser.add_option('--thresh', action="store", dest="threshold", default="800", help="lick sensor threshold value")
-# parser.add_option('--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
-
-# (options, args) = parser.parse_args()
-
 channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
 threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
@@ -190,7 +183,6 @@ else:
 
 # ========== Initialize PulsePal ==========
 
-# Initalize PulsePal
 pulse = PulsePalObject() # Create a new instance of a PulsePal object
 pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
 print(pulse.firmwareVersion) # Print firmware version to the console
