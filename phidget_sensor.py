@@ -7,8 +7,8 @@
 # run "python phidget_sensor.py"
 #
 # Three modes of operating:
-# a.  "naked" (PulsePal + Phidget only) 
-# b.  "MWorks"  (Listen to MWorks to control PulsePal via Phidget)
+# a.  "naked" (PulsePal + Phidget only - no mworks) 
+# b.  "mworks"  (Listen to MWorks to control PulsePal - no phidget)
 # c.  "trigger" (Use external trigger, e.g,. intan, to trigger PulsePal)
 #
 '''
@@ -21,9 +21,10 @@ import random
 import numpy as np
 import time
 import optparse
+from datetime import datetime
 
 parser = optparse.OptionParser()
-parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, MWorks, or trigger")
+parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, mworks, or trigger")
 
 parser.add_option('--ch', action="store", dest="channel_num", default="1", help="output channel for stimulation")
 parser.add_option('--thresh', action="store", dest="threshold", default="800", help="lick sensor threshold value")
@@ -31,14 +32,6 @@ parser.add_option('--lick-port', action="store", dest="lick_port", default="1", 
 
 (options, args) = parser.parse_args()
 mode = options.mode
-
-# Phidget specific imports
-from Phidgets.PhidgetException import *
-from Phidgets.Events.Events import *
-# from Phidgets.Devices.InterfaceKit import *
-from Phidgets.Devices import *
-from Phidgets.Phidget import PhidgetLogLevel
-from Phidgets.Manager import Manager
 
 # PulsePal imports
 import imp
@@ -50,62 +43,136 @@ path_to_file = home + scriptpath
 imp.load_source('PulsePal', path_to_file)
 from PulsePal import PulsePalObject # Import PulsePalObject
 
-# ========== Information Display Function ==========
+# MWorks stuff
+if mode=='mworks':
+    import mworks.conduit
+    sys.path.append('/Library/Application Support/MWorks/Scripting/Python')
 
-def displayDeviceInfo():
-    print("|------------|----------------------------------|--------------|------------|")
-    print("|- Attached -|-              Type              -|- Serial No. -|-  Version -|")
-    print("|------------|----------------------------------|--------------|------------|")
-    print("|- %8s -|- %30s -|- %10d -|- %8d -|" % (device.isAttached(), device.getDeviceName(), device.getSerialNum(), device.getDeviceVersion()))
-    print("|------------|----------------------------------|--------------|------------|")
-    print("Number of Digital Inputs: %i" % (device.getInputCount()))
-    print("Number of Digital Outputs: %i" % (device.getOutputCount()))
-    print("Number of Sensor Inputs: %i" % (device.getSensorCount()))
+    mw_output_dir = '/tmp/mw_output'
+    d = os.path.dirname(mw_output_dir)
+    if not os.path.exists(d):
+        os.mkdir(d)
 
-# ========== Event Handling Functions ==========
+# Phidget specific imports
+if mode == 'naked':
+    from Phidgets.PhidgetException import *
+    from Phidgets.Events.Events import *
+    # from Phidgets.Devices.InterfaceKit import *
+    from Phidgets.Devices import *
+    from Phidgets.Phidget import PhidgetLogLevel
+    from Phidgets.Manager import Manager
 
-def interfaceKitAttached(e):
-    attached = e.device
-    print("InterfaceKit %i Attached!" % (attached.getSerialNum()))
+    # ========== Information Display Function ==========
 
-def interfaceKitDetached(e):
-    detached = e.device
-    print("InterfaceKit %i Detached!" % (detached.getSerialNum()))
+    def displayDeviceInfo():
+        print("|------------|----------------------------------|--------------|------------|")
+        print("|- Attached -|-              Type              -|- Serial No. -|-  Version -|")
+        print("|------------|----------------------------------|--------------|------------|")
+        print("|- %8s -|- %30s -|- %10d -|- %8d -|" % (device.isAttached(), device.getDeviceName(), device.getSerialNum(), device.getDeviceVersion()))
+        print("|------------|----------------------------------|--------------|------------|")
+        print("Number of Digital Inputs: %i" % (device.getInputCount()))
+        print("Number of Digital Outputs: %i" % (device.getOutputCount()))
+        print("Number of Sensor Inputs: %i" % (device.getSensorCount()))
 
-def interfaceKitError(e):
+    # ========== Event Handling Functions ==========
+
+    def interfaceKitAttached(e):
+        attached = e.device
+        print("InterfaceKit %i Attached!" % (attached.getSerialNum()))
+
+    def interfaceKitDetached(e):
+        detached = e.device
+        print("InterfaceKit %i Detached!" % (detached.getSerialNum()))
+
+    def interfaceKitError(e):
+        try:
+            source = e.device
+            print("InterfaceKit %i: Phidget Error %i: %s" % (source.getSerialNum(), e.eCode, e.description))
+        except PhidgetException as e:
+            print("Phidget Exception %i: %s" % (e.code, e.details))
+
+    # def interfaceKitInputChanged(e):
+    #     source = e.device
+    #     print("InterfaceKit %i: Input %i: %s" % (source.getSerialNum(), e.index, e.state))
+
+    # def interfaceKitSensorChanged(e):
+    #     source = e.device
+    #     # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
+    #     return (e.index, e.value)
+
+    # def interfaceKitOutputChanged(e):
+    #     source = e.device
+    #     # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
+
+    # def detectSensorThreshold(e):
+    #     source = e.device
+    #     # threshold = source.getSensorChangeTrigger(e.index)
+    #     threshold = 500 #source.getSensorValue(e.index)
+    #     if e.value > threshold:
+    #     #     print("Sensor %i: %i" % (e.index, e.value))
+    #     # else:
+    #         print "reached threshold!!! Sensor %i: %i" % (e.index, e.value)
+
+    # =========== Python-specific Exception Handler ==========        
+            
+    def LocalErrorCatcher(event):
+        print("Phidget Exception: " + str(e.code) + " - " + str(e.details) + ", Exiting...")
+        exit(1)
+
+    # ========= Connect to PHIDGET ==========   
+
+    # Create InterfaceKit object:
     try:
-        source = e.device
-        print("InterfaceKit %i: Phidget Error %i: %s" % (source.getSerialNum(), e.eCode, e.description))
-    except PhidgetException as e:
-        print("Phidget Exception %i: %s" % (e.code, e.details))
+        device = InterfaceKit.InterfaceKit() 
+    except RuntimeError as e:
+        print("Runtime Error " + e.details + ", Exiting...\n")
+        exit(1)
 
-# def interfaceKitInputChanged(e):
-#     source = e.device
-#     print("InterfaceKit %i: Input %i: %s" % (source.getSerialNum(), e.index, e.state))
-
-# def interfaceKitSensorChanged(e):
-#     source = e.device
-#     # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
-#     return (e.index, e.value)
-
-# def interfaceKitOutputChanged(e):
-#     source = e.device
-#     # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
-
-# def detectSensorThreshold(e):
-#     source = e.device
-#     # threshold = source.getSensorChangeTrigger(e.index)
-#     threshold = 500 #source.getSensorValue(e.index)
-#     if e.value > threshold:
-#     #     print("Sensor %i: %i" % (e.index, e.value))
-#     # else:
-#         print "reached threshold!!! Sensor %i: %i" % (e.index, e.value)
-
-# =========== Python-specific Exception Handler ==========        
+    # Hook functions above into phidget object:
+    try:
+        #logging example, uncomment to generate a log file
+        #interfaceKit.enableLogging(PhidgetLogLevel.PHIDGET_LOG_VERBOSE, "phidgetlog.log")
         
-def LocalErrorCatcher(event):
-    print("Phidget Exception: " + str(e.code) + " - " + str(e.details) + ", Exiting...")
-    exit(1)
+        device.setOnAttachHandler(interfaceKitAttached)
+        device.setOnDetachHandler(interfaceKitDetached)
+        device.setOnErrorhandler(interfaceKitError)
+        # device.setOnInputChangeHandler(interfaceKitInputChanged)
+        # device.setOnOutputChangeHandler(interfaceKitOutputChanged)
+        # device.setOnSensorChangeHandler(interfaceKitSensorChanged)
+        # device.setOnSensorChangeHandler(detectSensorThreshold)
+
+    except PhidgetException as e:
+        LocalErrorCatcher(e)
+
+    # Open phidget:
+    print("Opening phidget object....")
+
+    try:
+        device.openPhidget()
+    except PhidgetException as e:
+        LocalErrorCatcher(e)
+
+    # Attach to the phidget:
+    print("Waiting for attach....")
+
+    try:
+        device.waitForAttach(8000)
+    except PhidgetException as e:
+        print "first"
+        print("Phidget Exception %i: %s" % (e.code, e.details))
+        try:
+            "closed it"
+            device.closePhidget()
+        except PhidgetException as e:
+            print "next"
+            print("Phidget Exception %i: %s" % (e.code, e.details))
+            print("Exiting....")
+            exit(1)
+        print "getting out..."
+        print("Exiting....")
+        exit(1)
+    else:
+        displayDeviceInfo()
 
 # ========= Experiment Parameters ==========   
 
@@ -125,62 +192,7 @@ if lick_port==1:
     target_port = 5 # LEFT PORT
 else:
     target_port = 7 # RIGHT PORT
-
-# ========= Connect to PHIDGET ==========   
-
-# Create InterfaceKit object:
-try:
-    device = InterfaceKit.InterfaceKit() 
-except RuntimeError as e:
-    print("Runtime Error " + e.details + ", Exiting...\n")
-    exit(1)
-
-# Hook functions above into phidget object:
-try:
-    #logging example, uncomment to generate a log file
-    #interfaceKit.enableLogging(PhidgetLogLevel.PHIDGET_LOG_VERBOSE, "phidgetlog.log")
-    
-    device.setOnAttachHandler(interfaceKitAttached)
-    device.setOnDetachHandler(interfaceKitDetached)
-    device.setOnErrorhandler(interfaceKitError)
-    # device.setOnInputChangeHandler(interfaceKitInputChanged)
-    # device.setOnOutputChangeHandler(interfaceKitOutputChanged)
-    # device.setOnSensorChangeHandler(interfaceKitSensorChanged)
-    # device.setOnSensorChangeHandler(detectSensorThreshold)
-
-except PhidgetException as e:
-    LocalErrorCatcher(e)
-
-# Open phidget:
-print("Opening phidget object....")
-
-try:
-    device.openPhidget()
-except PhidgetException as e:
-    LocalErrorCatcher(e)
-
-# Attach to the phidget:
-print("Waiting for attach....")
-
-try:
-    device.waitForAttach(8000)
-except PhidgetException as e:
-    print "first"
-    print("Phidget Exception %i: %s" % (e.code, e.details))
-    try:
-        "closed it"
-        device.closePhidget()
-    except PhidgetException as e:
-        print "next"
-        print("Phidget Exception %i: %s" % (e.code, e.details))
-        print("Exiting....")
-        exit(1)
-    print "getting out..."
-    print("Exiting....")
-    exit(1)
-else:
-    displayDeviceInfo()
-
+        
 # ========== Initialize PulsePal ==========
 
 pulse = PulsePalObject() # Create a new instance of a PulsePal object
