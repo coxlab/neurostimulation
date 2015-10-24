@@ -6,10 +6,12 @@
 # 
 # run "python phidget_sensor.py"
 #
-# Three modes of operating:
+# Three+x modes of operating:
 # a.  "naked" (PulsePal + Phidget only - no mworks) 
 # b.  "mworks"  (Listen to MWorks to control PulsePal - no phidget)
 # c.  "trigger" (Use external trigger, e.g,. intan, to trigger PulsePal)
+# 
+# x.  program PulsePal or not (if not, will run last used settings)
 #
 '''
 
@@ -22,12 +24,16 @@ import numpy as np
 import time
 import optparse
 from datetime import datetime
+import cPickle as pkl
 
 parser = optparse.OptionParser()
 parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, mworks, or trigger")
-parser.add_option('--program', action="store_true", dest="program", default="False", help="program pulse generator or not")
+parser.add_option('--program', action="store_true", dest="program", default=False, help="program pulse generator or not")
+parser.add_option('--save', action="store_true", dest="save_data", default=False, help="save data")
+parser.add_option('--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
+parser.add_option('--sub', action="store", dest="animalID", default="test", help="subject ID")
 
-parser.add_option('--ch', action="store", dest="channel_num", default="1", help="output channel for stimulation")
+parser.add_option('--channel', action="store", dest="channel_num", default="1", help="output channel for stimulation")
 parser.add_option('--thresh', action="store", dest="threshold", default="800", help="lick sensor threshold value")
 parser.add_option('--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
 
@@ -35,15 +41,39 @@ parser.add_option('--lick-port', action="store", dest="lick_port", default="1", 
 mode = options.mode
 program = options.program
 
-# PulsePal imports
-import imp
-scriptpath = '/Repositories/PulsePal/Python/PulsePal.py'
-sys.path.append(os.path.abspath(scriptpath))
-from os.path import expanduser
-home = expanduser("~")
-path_to_file = home + scriptpath
-imp.load_source('PulsePal', path_to_file)
-from PulsePal import PulsePalObject # Import PulsePalObject
+output_path = options.output_path
+animalID = options.animalID
+save = options.save_data
+
+if save:
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
+
+fmt = '%Y%m%d_%H%M%S%f'
+
+# ==============================================================================
+# STIMULATION PARAMETERS:   # EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
+# ==============================================================================
+n_pulses = 8                # num of pulses for reward
+pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
+pulse_voltage = 5.          # V: phase1Voltage
+frequency = 25.             # Hz: interPulseInterval in (s) = time bw pulses
+# ==============================================================================
+
+# ========= Experiment Parameters ==========   
+
+channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
+threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
+lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
+
+port_names = ["LEFT", "RIGHT"]
+if lick_port==1:
+    target_port = 5 # LEFT PORT
+    distractor_port = 7
+else:
+    target_port = 7 # RIGHT PORT
+    distractor_port = 5
+
 
 # MWorks stuff
 if mode=='mworks':
@@ -55,6 +85,18 @@ if mode=='mworks':
     if not os.path.exists(d):
         os.mkdir(d)
 
+# PulsePal imports
+if program:
+    print "Programming PulsePal..."
+    import imp
+    scriptpath = '/Repositories/PulsePal/Python/PulsePal.py'
+    sys.path.append(os.path.abspath(scriptpath))
+    from os.path import expanduser
+    home = expanduser("~")
+    path_to_file = home + scriptpath
+    imp.load_source('PulsePal', path_to_file)
+    from PulsePal import PulsePalObject # Import PulsePalObject
+
 # Phidget specific imports
 if mode == 'naked':
     from Phidgets.PhidgetException import *
@@ -63,6 +105,10 @@ if mode == 'naked':
     from Phidgets.Devices import *
     from Phidgets.Phidget import PhidgetLogLevel
     from Phidgets.Manager import Manager
+
+    sensor_events = []
+    output_events = []
+
 
     # ========== Information Display Function ==========
 
@@ -97,14 +143,15 @@ if mode == 'naked':
     #     source = e.device
     #     print("InterfaceKit %i: Input %i: %s" % (source.getSerialNum(), e.index, e.state))
 
-    # def interfaceKitSensorChanged(e):
-    #     source = e.device
-    #     # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
-    #     return (e.index, e.value)
+    def interfaceKitSensorChanged(e):
+        source = e.device
+        # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
+        sensor_events.append({'index':e.index, 'value':e.value,'time':datetime.now().strftime(fmt)})
 
-    # def interfaceKitOutputChanged(e):
-    #     source = e.device
-    #     # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
+    def interfaceKitOutputChanged(e):
+        source = e.device
+        print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
+        output_events.append({'index':e.index, 'value':e.state, 'time':datetime.now().strftime(fmt)})
 
     # def detectSensorThreshold(e):
     #     source = e.device
@@ -139,8 +186,8 @@ if mode == 'naked':
         device.setOnDetachHandler(interfaceKitDetached)
         device.setOnErrorhandler(interfaceKitError)
         # device.setOnInputChangeHandler(interfaceKitInputChanged)
-        # device.setOnOutputChangeHandler(interfaceKitOutputChanged)
-        # device.setOnSensorChangeHandler(interfaceKitSensorChanged)
+        device.setOnOutputChangeHandler(interfaceKitOutputChanged)
+        device.setOnSensorChangeHandler(interfaceKitSensorChanged)
         # device.setOnSensorChangeHandler(detectSensorThreshold)
 
     except PhidgetException as e:
@@ -176,25 +223,16 @@ if mode == 'naked':
     else:
         displayDeviceInfo()
 
-# ========= Experiment Parameters ==========   
-
-channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
-threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
-lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
-
-port_names = ["LEFT", "RIGHT"]
-if lick_port==1:
-    target_port = 5 # LEFT PORT
-else:
-    target_port = 7 # RIGHT PORT
+# ========= Pulse Pal stuff ==========   
 
 if program:
+    print "PULSEPAL!"
     pulse_port = '/dev/ttyACM0' # port for PulsePal
 
-    n_pulses = 8                # num of pulses for reward
-    pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
-    pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
-    frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
+    # n_pulses = 8                # num of pulses for reward
+    # pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
+    # pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
+    # frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
             
     # ========== Initialize PulsePal ==========
 
@@ -242,17 +280,28 @@ if program:
     pulse.burstDuration[channel_num] = 0 #(2*pulse_width) / 1000. #1./frequency.
     # pulse.interBurstInterval[channel_num] = 1./frequency
 
-    # pulse.triggerMode = 0
+    pulse.triggerMode[1:5] = [0]*4
     pulse.linkTriggerChannel1[0:5] = [0]*5
     pulse.linkTriggerChannel1[1] = 1
 
     pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
 
 else:
+    print "Using last saved settings on PulsePal. Press Enter to CONTINUE..."
+    chr = sys.stdin.read(1)
+
+    print "Parameters accepted! Continuing... [ctrl+C to Quit]"
 
     ext_trigger = 0 # DO channel on phidget output (connect to Trigger Ch 1)
 
 # ========== DO STUFF ==========
+
+nt = 0
+nd = 0
+nb = 0
+n_targets = []
+n_distractors = []
+n_both = []
 
 try:
     try:
@@ -260,20 +309,37 @@ try:
 
             # poll the sensors:
             target_port_val = device.getSensorValue(target_port);
-            # two = device.getSensorValue(lick_port2)
+            distractor_port_val = device.getSensorValue(distractor_port)
 
-            if target_port_val > threshold:
+            if (target_port_val >= threshold) and (distractor_port_val < threshold):
                 # trigger pulse
                 if program:
+                    print "HEYO"
                     pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
                     pulse.setDisplay("Channel 1", "ZAP!!!")
                     print pulse.phase1Voltage, pulse.phase2Voltage
                     pulse.setDisplay("Channel 1", "done!!!")
                 else:
-                    print "Triggering DO channel %i" % ext_trigger
+                    # print "Triggering DO channel %i" % ext_trigger
                     device.setOutputState(ext_trigger, True)
+                    time.sleep(0.01)
                     device.setOutputState(ext_trigger, False)
+
                 time.sleep(2)
+
+                nt += 1
+                n_targets.append((datetime.now().strftime(fmt), nt))
+
+            elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+
+                nd += 1
+                n_distractors.append((datetime.now().strftime(fmt), nd))
+
+            elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
+
+                nb += 1
+                n_both.append((datetime.now().strftime(fmt), nb))
+
 
     except KeyboardInterrupt:
         pass
@@ -283,6 +349,37 @@ except PhidgetException as e:
     exit(1)
 
 
+if save:
+    D = dict()
+    E = dict()
+
+    D['n_distractors'] = n_distractors
+    D['n_targets'] = n_targets
+    D['n_both'] = n_both
+
+    D['mode'] = mode
+    D['ext_trigger'] = ext_trigger
+    D['target_port'] = port_names[lick_port]
+    D['target_port_channel'] = target_port
+
+    D['distractor_port'] = port_names[lick_port]
+    D['distractor_port)channel'] = distractor_port
+    D['n_pulses'] = n_pulses
+    D['pulse_width'] = pulse_width
+    D['pulse_voltage'] = pulse_voltage
+    D['frequency'] = frequency
+
+    datestr = datetime.now().strftime(fmt)
+    fname = animalID + '_' + datestr + '_params.pkl'
+    with open(os.path.join(output_path, fname), 'wb') as f:
+        pkl.dump(D, f)
+
+    fname = animalID + '_' + datestr + '_events.pkl'
+    E['output'] = output_events
+    E['sensor'] = sensor_events
+    with open(os.path.join(output_path, fname), 'wb') as f:
+        pkl.dump(E, f)
+
 
 print("Press Enter to quit....")
 
@@ -291,13 +388,15 @@ chr = sys.stdin.read(1)
 print("Closing...")
 
 # Close Phidget
-try:
-    device.closePhidget()
-except PhidgetException as e:
-    LocalErrorCatcher(e)
+if mode=='naked':
+    try:
+        device.closePhidget()
+    except PhidgetException as e:
+        LocalErrorCatcher(e)
+
+# Disconnect PulsePal
+if program:
+    pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
 
 print("Done.")
 # exit(0)
-
-# Disconnect PulsePal
-pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
