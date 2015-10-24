@@ -25,6 +25,7 @@ from datetime import datetime
 
 parser = optparse.OptionParser()
 parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, mworks, or trigger")
+parser.add_option('--program', action="store_true", dest="program", default="False", help="program pulse generator or not")
 
 parser.add_option('--ch', action="store", dest="channel_num", default="1", help="output channel for stimulation")
 parser.add_option('--thresh', action="store", dest="threshold", default="800", help="lick sensor threshold value")
@@ -32,6 +33,7 @@ parser.add_option('--lick-port', action="store", dest="lick_port", default="1", 
 
 (options, args) = parser.parse_args()
 mode = options.mode
+program = options.program
 
 # PulsePal imports
 import imp
@@ -176,13 +178,6 @@ if mode == 'naked':
 
 # ========= Experiment Parameters ==========   
 
-pulse_port = '/dev/ttyACM0' # port for PulsePal
-
-n_pulses = 8                # num of pulses for reward
-pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
-frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
-
 channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
 threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
@@ -192,60 +187,70 @@ if lick_port==1:
     target_port = 5 # LEFT PORT
 else:
     target_port = 7 # RIGHT PORT
-        
-# ========== Initialize PulsePal ==========
 
-pulse = PulsePalObject() # Create a new instance of a PulsePal object
-pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
-print(pulse.firmwareVersion) # Print firmware version to the console
+if program:
+    pulse_port = '/dev/ttyACM0' # port for PulsePal
 
-# ========== Set PulsePal Settings ==========
+    n_pulses = 8                # num of pulses for reward
+    pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
+    pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
+    frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
+            
+    # ========== Initialize PulsePal ==========
 
-channels = np.zeros(4)
-channels[channel_num-1] = 1
-# channels = [int(i) for i in channels]
+    pulse = PulsePalObject() # Create a new instance of a PulsePal object
+    pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
+    print(pulse.firmwareVersion) # Print firmware version to the console
 
-print "Output channels: %s" % str(channels)
-print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
-print "|------------|----------------|-------------|-----------|"
-print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
-print "|------------|----------------|-------------|-----------|"
-print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+    # ========== Set PulsePal Settings ==========
 
-pulse.isBiphasic[channel_num] = 1 # parameter arrays are 5 elements long. Use [1] for output channel 1. 
-pulse.customTrainID[channel_num] = 0 # set to 0 for parametric (non custom train 1 or 2)
+    channels = np.zeros(4)
+    channels[channel_num-1] = 1
 
-if pulse.isBiphasic[channel_num] == 1:
-    phasic = 2
+    print "Output channels: %s" % str(channels)
+    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+    print "|------------|----------------|-------------|-----------|"
+    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+    print "|------------|----------------|-------------|-----------|"
+    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+
+    pulse.isBiphasic[channel_num] = 1 # parameter arrays are 5 elements long. Use [1] for output channel 1. 
+    pulse.customTrainID[channel_num] = 0 # set to 0 for parametric (non custom train 1 or 2)
+
+    if pulse.isBiphasic[channel_num] == 1:
+        phasic = 2
+    else:
+        phasic = 1
+    train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
+    print "Train duration: %f sec" % train_duration
+    print "Biphasic pulses: %i" % pulse.isBiphasic[channel_num]
+    print "Press Enter to CONTINUE..."
+    chr = sys.stdin.read(1)
+
+    print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+    pulse.setDisplay("Starting! :)", "STIM on CH %i" % channel_num)
+
+    pulse.interPhaseInterval[channel_num] = 0. # time between pos and neg pulse for biphasic # min seems to be 0.01s
+    pulse.interPulseInterval[1:5] = [1./frequency]*4 # time between biphasic pulses
+    pulse.phase1Voltage[channel_num] = pulse_voltage # (set output channel x to use 7V pulses)
+    pulse.phase1Duration[channel_num] = pulse_width/1000.
+    pulse.phase2Duration[channel_num] = pulse_width/1000.
+
+    pulse.pulseTrainDuration[channel_num] =  train_duration # 0.01 # channel#, train duration (sec)
+    pulse.pulseTrainDelay[channel_num] = 0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
+
+    pulse.burstDuration[channel_num] = 0 #(2*pulse_width) / 1000. #1./frequency.
+    # pulse.interBurstInterval[channel_num] = 1./frequency
+
+    # pulse.triggerMode = 0
+    pulse.linkTriggerChannel1[0:5] = [0]*5
+    pulse.linkTriggerChannel1[1] = 1
+
+    pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
+
 else:
-    phasic = 1
-train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
-print "Train duration: %f sec" % train_duration
-print "Biphasic pulses: %i" % pulse.isBiphasic[channel_num]
-print "Press Enter to CONTINUE..."
-chr = sys.stdin.read(1)
 
-print "Parameters accepted! Continuing... [ctrl+C to Quit]"
-pulse.setDisplay("Starting! :)", "STIM on CH %i" % channel_num)
-
-pulse.interPhaseInterval[channel_num] = 0. # time between pos and neg pulse for biphasic # min seems to be 0.01s
-pulse.interPulseInterval[1:5] = [1./frequency]*4 # time between biphasic pulses
-pulse.phase1Voltage[channel_num] = pulse_voltage # (set output channel x to use 7V pulses)
-pulse.phase1Duration[channel_num] = pulse_width/1000.
-# pulse.restingVoltage[1:5] = [0]*4 #= #0
-# pulse.phase2Voltage[channel_num] = -1*pulse_voltage # this gets auto-set if isBiphasic
-pulse.phase2Duration[channel_num] = pulse_width/1000.
-
-pulse.pulseTrainDuration[channel_num] =  train_duration # 0.01 # channel#, train duration (sec)
-pulse.pulseTrainDelay[channel_num] = 0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
-
-pulse.burstDuration[channel_num] = 0 #(2*pulse_width) / 1000. #1./frequency.
-# pulse.interBurstInterval[channel_num] = 1./frequency
-
-# pulse.triggerMode = 0
-# pulse.linkTriggerChannel1[1:5] = [0]*4
-
-pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
+    ext_trigger = 0 # DO channel on phidget output (connect to Trigger Ch 1)
 
 # ========== DO STUFF ==========
 
@@ -253,18 +258,22 @@ try:
     try:
         while True:
 
-
             # poll the sensors:
             target_port_val = device.getSensorValue(target_port);
             # two = device.getSensorValue(lick_port2)
 
             if target_port_val > threshold:
                 # trigger pulse
-                pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
-                pulse.setDisplay("Channel 1", "ZAP!!!")
-                print pulse.phase1Voltage, pulse.phase2Voltage
-                time.sleep(5)
-                pulse.setDisplay("Channel 1", "done!!!")
+                if program:
+                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
+                    pulse.setDisplay("Channel 1", "ZAP!!!")
+                    print pulse.phase1Voltage, pulse.phase2Voltage
+                    pulse.setDisplay("Channel 1", "done!!!")
+                else:
+                    print "Triggering DO channel %i" % ext_trigger
+                    device.setOutputState(ext_trigger, True)
+                    device.setOutputState(ext_trigger, False)
+                time.sleep(2)
 
     except KeyboardInterrupt:
         pass
