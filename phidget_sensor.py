@@ -150,7 +150,7 @@ if mode == 'naked':
 
     def interfaceKitOutputChanged(e):
         source = e.device
-        print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
+        # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
         output_events.append({'index':e.index, 'value':e.state, 'time':datetime.now().strftime(fmt)})
 
     # def detectSensorThreshold(e):
@@ -287,7 +287,15 @@ if program:
     pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
 
 else:
-    print "Using last saved settings on PulsePal. Press Enter to CONTINUE..."
+    print "Using last saved settings on PulsePal."
+    print "Output channels: %s" % str(channels)
+    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+    print "|------------|----------------|-------------|-----------|"
+    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+    print "|------------|----------------|-------------|-----------|"
+    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+
+    print "Press Enter to CONTINUE..."
     chr = sys.stdin.read(1)
 
     print "Parameters accepted! Continuing... [ctrl+C to Quit]"
