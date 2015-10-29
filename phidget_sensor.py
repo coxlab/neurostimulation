@@ -27,8 +27,8 @@ from datetime import datetime
 import cPickle as pkl
 
 parser = optparse.OptionParser()
-parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, mworks, or trigger")
-parser.add_option('--program', action="store_true", dest="program", default=False, help="program pulse generator or not")
+parser.add_option('--mode', action="store", dest="mode", default="naked", help="naked, mworks, or pulsepal")
+parser.add_option('--program', action="store_true", dest="program", default=False, help="program pulse generator only (must be in 'pulsepal' mode)")
 parser.add_option('--save', action="store_true", dest="save_data", default=False, help="save data")
 parser.add_option('--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
 parser.add_option('--sub', action="store", dest="animalID", default="test", help="subject ID")
@@ -55,9 +55,9 @@ fmt = '%Y%m%d_%H%M%S%f'
 # STIMULATION PARAMETERS:   # EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
 # ==============================================================================
 n_pulses = 8                # num of pulses for reward
-pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 5.          # V: phase1Voltage
-frequency = 25.             # Hz: interPulseInterval in (s) = time bw pulses
+pulse_width = 0.5        # ms: phase1Duration = pulse_width/1000. (s)
+pulse_voltage = 2.        # V: phase1Voltage # 100uA/V
+frequency = 30.          # Hz: interPulseInterval in (s) = time bw pulses
 # ==============================================================================
 
 # ========= Experiment Parameters ==========   
@@ -90,7 +90,7 @@ if mode=='mworks':
         os.mkdir(d)
 
 # PulsePal imports
-if program:
+if mode=='pulsepal':
     print "Programming PulsePal..."
     import imp
     scriptpath = '/Repositories/PulsePal/Python/PulsePal.py'
@@ -237,58 +237,63 @@ if program:
     # pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
     # pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
     # frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
-            
-    # ========== Initialize PulsePal ==========
 
-    pulse = PulsePalObject() # Create a new instance of a PulsePal object
-    pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
-    print(pulse.firmwareVersion) # Print firmware version to the console
+    try:        
+        # ========== Initialize PulsePal ==========
 
-    # ========== Set PulsePal Settings ==========
+        pulse = PulsePalObject() # Create a new instance of a PulsePal object
+        pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
+        print(pulse.firmwareVersion) # Print firmware version to the console
 
-    channels = np.zeros(4)
-    channels[channel_num-1] = 1
+        # ========== Set PulsePal Settings ==========
 
-    print "Output channels: %s" % str(channels)
-    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
-    print "|------------|----------------|-------------|-----------|"
-    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
-    print "|------------|----------------|-------------|-----------|"
-    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+        channels = np.zeros(4)
+        channels[channel_num-1] = 1
 
-    pulse.isBiphasic[channel_num] = 1 # parameter arrays are 5 elements long. Use [1] for output channel 1. 
-    pulse.customTrainID[channel_num] = 0 # set to 0 for parametric (non custom train 1 or 2)
+        print "Output channels: %s" % str(channels)
+        print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+        print "|------------|----------------|-------------|-----------|"
+        print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+        print "|------------|----------------|-------------|-----------|"
+        print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
-    if pulse.isBiphasic[channel_num] == 1:
-        phasic = 2
-    else:
-        phasic = 1
-    train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
-    print "Train duration: %f sec" % train_duration
-    print "Biphasic pulses: %i" % pulse.isBiphasic[channel_num]
-    print "Press Enter to CONTINUE..."
-    chr = sys.stdin.read(1)
+        pulse.isBiphasic[channel_num] = 1 # parameter arrays are 5 elements long. Use [1] for output channel 1. 
+        pulse.customTrainID[channel_num] = 0 # set to 0 for parametric (non custom train 1 or 2)
 
-    print "Parameters accepted! Continuing... [ctrl+C to Quit]"
-    pulse.setDisplay("Starting! :)", "STIM on CH %i" % channel_num)
+        if pulse.isBiphasic[channel_num] == 1:
+            phasic = 2
+        else:
+            phasic = 1
+        train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
+        print "Train duration: %f sec" % train_duration
+        print "Biphasic pulses: %i" % pulse.isBiphasic[channel_num]
+        print "Press Enter to CONTINUE..."
+        chr = sys.stdin.read(1)
 
-    pulse.interPhaseInterval[channel_num] = 0. # time between pos and neg pulse for biphasic # min seems to be 0.01s
-    pulse.interPulseInterval[1:5] = [1./frequency]*4 # time between biphasic pulses
-    pulse.phase1Voltage[channel_num] = pulse_voltage # (set output channel x to use 7V pulses)
-    pulse.phase1Duration[channel_num] = pulse_width/1000.
-    pulse.phase2Duration[channel_num] = pulse_width/1000.
+        print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+        pulse.setDisplay("Starting! :)", "STIM on CH %i" % channel_num)
 
-    pulse.pulseTrainDuration[channel_num] =  train_duration # 0.01 # channel#, train duration (sec)
-    pulse.pulseTrainDelay[channel_num] = 0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
+        pulse.interPhaseInterval[channel_num] = 0. # time between pos and neg pulse for biphasic # min seems to be 0.01s
+        pulse.interPulseInterval[1:5] = [1./frequency]*4 # time between biphasic pulses
+        pulse.phase1Voltage[channel_num] = pulse_voltage # (set output channel x to use 7V pulses)
+        pulse.phase1Duration[channel_num] = pulse_width/1000.
+        pulse.phase2Duration[channel_num] = pulse_width/1000.
 
-    pulse.burstDuration[channel_num] = 0 #(2*pulse_width) / 1000. #1./frequency.
-    # pulse.interBurstInterval[channel_num] = 1./frequency
+        pulse.pulseTrainDuration[channel_num] =  train_duration # 0.01 # channel#, train duration (sec)
+        pulse.pulseTrainDelay[channel_num] = 0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
 
-    pulse.triggerMode[1:5] = [0]*4
-    pulse.linkTriggerChannel1[0:5] = [0]*5
-    pulse.linkTriggerChannel1[1] = 1
+        pulse.burstDuration[channel_num] = 0 #(2*pulse_width) / 1000. #1./frequency.
+        # pulse.interBurstInterval[channel_num] = 1./frequency
 
-    pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
+        pulse.triggerMode[1:5] = [0]*4
+        pulse.linkTriggerChannel1[0:5] = [0]*5
+        pulse.linkTriggerChannel1[1] = 1
+
+        pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
+    except NameError, e:
+        print e
+        print "If trying to reprogram PulsePal, mode must also be 'pulsepal' -- try again."
+        exit(1)
 
 else:
     print "Using last saved settings on PulsePal."
@@ -342,7 +347,7 @@ def do_print():
 
         if (target_port_val >= threshold) and (distractor_port_val < threshold):
             # trigger pulse
-            if program:
+            if mode=='pulsepal':
                 print "HEYO"
                 pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
                 pulse.setDisplay("Channel 1", "ZAP!!!")
@@ -379,42 +384,50 @@ def do_print():
 if __name__ == '__main__':
     try:
         print "Press ENTER to quit"
-        n_distractors, n_targets, n_both = do_print()
 
-        if save:
-            D = dict()
-            E = dict()
+        if program:
 
-            D['n_distractors'] = n_distractors
-            D['n_targets'] = n_targets
-            D['n_both'] = n_both
+            print "re-programming successful"
+            pass
 
-            D['mode'] = mode
-            D['ext_trigger'] = ext_trigger
-            D['target_port'] = port_names[lick_port]
-            D['target_port_channel'] = target_port
+        else:
 
-            D['distractor_port'] = port_names[lick_port]
-            D['distractor_port_channel'] = distractor_port
-            D['n_pulses'] = n_pulses
-            D['pulse_width'] = pulse_width
-            D['pulse_voltage'] = pulse_voltage
-            D['frequency'] = frequency
+            n_distractors, n_targets, n_both = do_print()
 
-            datestr = datetime.now().strftime(fmt)
-            fname = animalID + '_' + datestr + '_params.pkl'
-            with open(os.path.join(output_path, fname), 'wb') as f:
-                pkl.dump(D, f)
-                print "saved counters."
-                # print D
+            if save:
+                D = dict()
+                E = dict()
 
-            fname = animalID + '_' + datestr + '_events.pkl'
-            E['output'] = output_events
-            E['sensor'] = sensor_events
-            with open(os.path.join(output_path, fname), 'wb') as f:
-                pkl.dump(E, f)
-                print "saved events."
-                # print E
+                D['n_distractors'] = n_distractors
+                D['n_targets'] = n_targets
+                D['n_both'] = n_both
+
+                D['mode'] = mode
+                D['ext_trigger'] = ext_trigger
+                D['target_port'] = port_names[lick_port]
+                D['target_port_channel'] = target_port
+
+                D['distractor_port'] = port_names[lick_port]
+                D['distractor_port_channel'] = distractor_port
+                D['n_pulses'] = n_pulses
+                D['pulse_width'] = pulse_width
+                D['pulse_voltage'] = pulse_voltage
+                D['frequency'] = frequency
+
+                datestr = datetime.now().strftime(fmt)
+                fname = animalID + '_' + datestr + '_params.pkl'
+                with open(os.path.join(output_path, fname), 'wb') as f:
+                    pkl.dump(D, f)
+                    print "saved counters."
+                    # print D
+
+                fname = animalID + '_' + datestr + '_events.pkl'
+                E['output'] = output_events
+                E['sensor'] = sensor_events
+                with open(os.path.join(output_path, fname), 'wb') as f:
+                    pkl.dump(E, f)
+                    print "saved events."
+                    # print E
 
 
     except PhidgetException as e:
