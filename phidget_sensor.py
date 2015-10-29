@@ -63,8 +63,12 @@ frequency = 25.             # Hz: interPulseInterval in (s) = time bw pulses
 # ========= Experiment Parameters ==========   
 
 channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
+channels = np.zeros(4)
+channels[channel_num-1] = 1
+
 threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
+
 
 port_names = ["LEFT", "RIGHT"]
 if lick_port==1:
@@ -304,107 +308,216 @@ else:
 
 # ========== DO STUFF ==========
 
-nt = 0
-nd = 0
-nb = 0
-n_targets = []
-n_distractors = []
-n_both = []
+# nt = 0
+# nd = 0
+# nb = 0
+# n_targets = []
+# n_distractors = []
+# n_both = []
 
-try:
+import thread, time
+
+def input_thread(L):
+    raw_input()
+    L.append(None)
+    
+def do_print():
+
+    L = []
+    thread.start_new_thread(input_thread, (L,))
+
+    nt = 0
+    nd = 0
+    nb = 0
+    n_targets = []
+    n_distractors = []
+    n_both = []
+
+    while True:
+
+        # print "."
+        # poll the sensors:
+        target_port_val = device.getSensorValue(target_port);
+        distractor_port_val = device.getSensorValue(distractor_port)
+
+        if (target_port_val >= threshold) and (distractor_port_val < threshold):
+            # trigger pulse
+            if program:
+                print "HEYO"
+                pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
+                pulse.setDisplay("Channel 1", "ZAP!!!")
+                print pulse.phase1Voltage, pulse.phase2Voltage
+                pulse.setDisplay("Channel 1", "done!!!")
+            else:
+                # print "Triggering DO channel %i" % ext_trigger
+                device.setOutputState(ext_trigger, True)
+                device.setOutputState(ext_trigger, False)
+
+            # time.sleep(0.01)
+
+            nt += 1
+            n_targets.append((datetime.now().strftime(fmt), nt))
+
+        elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+
+            nd += 1
+            n_distractors.append((datetime.now().strftime(fmt), nd))
+
+        elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
+
+            nb += 1
+            n_both.append((datetime.now().strftime(fmt), nb))
+
+        # time.sleep(.1)
+        if L: 
+            print "Exiting loop..."
+            break
+
+    return n_distractors, n_targets, n_both
+            # print "Hi Mom!"
+
+if __name__ == '__main__':
     try:
-        while True:
+        print "Press ENTER to quit"
+        n_distractors, n_targets, n_both = do_print()
 
-            # poll the sensors:
-            target_port_val = device.getSensorValue(target_port);
-            distractor_port_val = device.getSensorValue(distractor_port)
+        if save:
+            D = dict()
+            E = dict()
 
-            if (target_port_val >= threshold) and (distractor_port_val < threshold):
-                # trigger pulse
-                if program:
-                    print "HEYO"
-                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
-                    pulse.setDisplay("Channel 1", "ZAP!!!")
-                    print pulse.phase1Voltage, pulse.phase2Voltage
-                    pulse.setDisplay("Channel 1", "done!!!")
-                else:
-                    # print "Triggering DO channel %i" % ext_trigger
-                    device.setOutputState(ext_trigger, True)
-                    time.sleep(0.01)
-                    device.setOutputState(ext_trigger, False)
+            D['n_distractors'] = n_distractors
+            D['n_targets'] = n_targets
+            D['n_both'] = n_both
 
-                time.sleep(2)
+            D['mode'] = mode
+            D['ext_trigger'] = ext_trigger
+            D['target_port'] = port_names[lick_port]
+            D['target_port_channel'] = target_port
 
-                nt += 1
-                n_targets.append((datetime.now().strftime(fmt), nt))
+            D['distractor_port'] = port_names[lick_port]
+            D['distractor_port_channel'] = distractor_port
+            D['n_pulses'] = n_pulses
+            D['pulse_width'] = pulse_width
+            D['pulse_voltage'] = pulse_voltage
+            D['frequency'] = frequency
 
-            elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+            datestr = datetime.now().strftime(fmt)
+            fname = animalID + '_' + datestr + '_params.pkl'
+            with open(os.path.join(output_path, fname), 'wb') as f:
+                pkl.dump(D, f)
+                print "saved counters."
+                # print D
 
-                nd += 1
-                n_distractors.append((datetime.now().strftime(fmt), nd))
-
-            elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
-
-                nb += 1
-                n_both.append((datetime.now().strftime(fmt), nb))
-
-
-    except KeyboardInterrupt:
-        pass
-
-except PhidgetException as e:
-    print "Phidget Exception %i: %s" % (e.code, e.details)
-    exit(1)
+            fname = animalID + '_' + datestr + '_events.pkl'
+            E['output'] = output_events
+            E['sensor'] = sensor_events
+            with open(os.path.join(output_path, fname), 'wb') as f:
+                pkl.dump(E, f)
+                print "saved events."
+                # print E
 
 
-if save:
-    D = dict()
-    E = dict()
-
-    D['n_distractors'] = n_distractors
-    D['n_targets'] = n_targets
-    D['n_both'] = n_both
-
-    D['mode'] = mode
-    D['ext_trigger'] = ext_trigger
-    D['target_port'] = port_names[lick_port]
-    D['target_port_channel'] = target_port
-
-    D['distractor_port'] = port_names[lick_port]
-    D['distractor_port)channel'] = distractor_port
-    D['n_pulses'] = n_pulses
-    D['pulse_width'] = pulse_width
-    D['pulse_voltage'] = pulse_voltage
-    D['frequency'] = frequency
-
-    datestr = datetime.now().strftime(fmt)
-    fname = animalID + '_' + datestr + '_params.pkl'
-    with open(os.path.join(output_path, fname), 'wb') as f:
-        pkl.dump(D, f)
-
-    fname = animalID + '_' + datestr + '_events.pkl'
-    E['output'] = output_events
-    E['sensor'] = sensor_events
-    with open(os.path.join(output_path, fname), 'wb') as f:
-        pkl.dump(E, f)
-
-
-print("Press Enter to quit....")
-
-chr = sys.stdin.read(1)
-
-print("Closing...")
-
-# Close Phidget
-if mode=='naked':
-    try:
-        device.closePhidget()
     except PhidgetException as e:
-        LocalErrorCatcher(e)
+        print "Phidget Exception %i: %s" % (e.code, e.details)
+        exit(1)
+# try:
+    # while True:
+    #     print "."
+    #     # poll the sensors:
+    #     target_port_val = device.getSensorValue(target_port);
+    #     distractor_port_val = device.getSensorValue(distractor_port)
 
-# Disconnect PulsePal
-if program:
-    pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
+    #     if (target_port_val >= threshold) and (distractor_port_val < threshold):
+    #         # trigger pulse
+    #         if program:
+    #             print "HEYO"
+    #             pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
+    #             pulse.setDisplay("Channel 1", "ZAP!!!")
+    #             print pulse.phase1Voltage, pulse.phase2Voltage
+    #             pulse.setDisplay("Channel 1", "done!!!")
+    #         else:
+    #             # print "Triggering DO channel %i" % ext_trigger
+    #             device.setOutputState(ext_trigger, True)
+    #             device.setOutputState(ext_trigger, False)
 
-print("Done.")
-# exit(0)
+    #         time.sleep(0.01)
+
+    #         nt += 1
+    #         n_targets.append((datetime.now().strftime(fmt), nt))
+
+    #     elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+
+    #         nd += 1
+    #         n_distractors.append((datetime.now().strftime(fmt), nd))
+
+    #     elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
+
+    #         nb += 1
+    #         n_both.append((datetime.now().strftime(fmt), nb))
+
+    #     choice = raw_input("> ")
+
+    #     if choice == 'q' :
+    #         print "You win"
+    #         input("yay")
+    #         break
+
+# except PhidgetException as e:
+#     print "Phidget Exception %i: %s" % (e.code, e.details)
+#     exit(1)
+
+
+    # if save:
+    #     D = dict()
+    #     E = dict()
+
+    #     D['n_distractors'] = n_distractors
+    #     D['n_targets'] = n_targets
+    #     D['n_both'] = n_both
+
+    #     D['mode'] = mode
+    #     D['ext_trigger'] = ext_trigger
+    #     D['target_port'] = port_names[lick_port]
+    #     D['target_port_channel'] = target_port
+
+    #     D['distractor_port'] = port_names[lick_port]
+    #     D['distractor_port)channel'] = distractor_port
+    #     D['n_pulses'] = n_pulses
+    #     D['pulse_width'] = pulse_width
+    #     D['pulse_voltage'] = pulse_voltage
+    #     D['frequency'] = frequency
+
+    #     datestr = datetime.now().strftime(fmt)
+    #     fname = animalID + '_' + datestr + '_params.pkl'
+    #     with open(os.path.join(output_path, fname), 'wb') as f:
+    #         pkl.dump(D, f)
+    #         print "saved counters:"
+    #         print D
+
+    #     fname = animalID + '_' + datestr + '_events.pkl'
+    #     E['output'] = output_events
+    #     E['sensor'] = sensor_events
+    #     with open(os.path.join(output_path, fname), 'wb') as f:
+    #         pkl.dump(E, f)
+    #         print "saved events:"
+    #         print E
+
+    print("Press Enter to close")
+
+    chr = sys.stdin.read(1)
+
+    print("Closing...")
+
+    # Close Phidget
+    if mode=='naked':
+        try:
+            device.closePhidget()
+        except PhidgetException as e:
+            LocalErrorCatcher(e)
+
+    # Disconnect PulsePal
+    if program:
+        pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
+
+    print("Done.")
+    # exit(0)

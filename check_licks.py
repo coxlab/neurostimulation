@@ -47,7 +47,7 @@ tevs = evs['output'] # trigger events
 sevs = evs['sensor'] # sensor events
 
 n_triggers_detected = [t['time'] for t in tevs if t['index']==data['ext_trigger'] and t['value']]
-if not data['n_targets'] == len(n_triggers_detected):
+if not len(data['n_targets']) == len(n_triggers_detected):
 	print "N target licks and N rewarded triggers do not match!"
 
 target_vals = [(int(i['time'].split('_')[1]), i['value']) for i in sevs if i['index']==data['target_port_channel']]
