@@ -39,22 +39,43 @@ curr_session = [f for f in files if session_times[0] in f]
 for fname in curr_session:
 	with open(os.path.join(datadir, fname), 'rb') as f:
 		if 'params' in fname:
-			data = pkl.load(f)
+			params = pkl.load(f)
 		else:
 			evs =pkl.load(f)
 
-tevs = evs['output'] # trigger events
-sevs = evs['sensor'] # sensor events
+trigger_evs = evs['output'] # trigger events
+sensor_evs = evs['sensor'] # sensor events
 
-n_triggers_detected = [t['time'] for t in tevs if t['index']==data['ext_trigger'] and t['value']]
-if not len(data['n_targets']) == len(n_triggers_detected):
+n_triggers_detected = len([t['time'] for t in trigger_evs if t['index']==params['ext_trigger'] and t['value']])
+n_target_licks = max([i[1] for i in params['counters']['n_targets']])
+n_distractor_licks = max([i[1] for i in params['counters']['n_distractors']])
+n_licking_both = max([i[1] for i in params['counters']['n_both']])
+
+
+if not len(n_target_licks) == len(n_triggers_detected):
 	print "N target licks and N rewarded triggers do not match!"
+	print "N target licks: %i, N triggers %i." % (n_target_licks, n_triggers_detected)
 
-target_vals = [(int(i['time'].split('_')[1]), i['value']) for i in sevs if i['index']==data['target_port_channel']]
-distractor_vals = [(int(i['time'].split('_')[1]), i['value']) for i in sevs if i['index']==data['distractor_port_channel']]
+target_vals = [(i['time'], i['value']) for i in sensor_evs if i['index']==params['target_port_channel']]
+distractor_vals = [(i['time'], i['value']) for i in sensor_evs if i['index']==params['distractor_port_channel']]
 
-plt.plot([i[0] for i in target_vals], [i[1] for i in target_vals], 'r*--', label='target')
-plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go--', label='distractor')
+trigger_times = [i['time'] for i in trigger_evs if i['index']==params['ext_trigger'] and i['value'] ]
+
+# plt.plot([i[0] for i in target_vals], [i[1] for i in target_vals], 'r*', label='target')
+# plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
+
+strt  = params['start_time'] #int(sevs[0]['time'].split('_')[1][0:4])
+end = params['end_time'] #int(curr_session[0].split('_')[2][0:4])
+
+taxis = range((end-strt)+1)
+# rel_targ_times = [(1-(i[0]/end))*len(taxis) for i in target_vals]
+y1 = np.where(i[0])
+
+[np.where(taxis == min(taxis, key=lambda x: abs(float(x) - i[0]))) for i in target_vals]
+
+
+plt.plot(np.linspace(strt, end, len(sevs), endpoint=True), [i[1] for i in target_vals], 'r*', label='target')
+plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
 plt.xlabel('time (ms)')
 plt.ylabel('sensor value')
 plt.title('time spent licking each port')

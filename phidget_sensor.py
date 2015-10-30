@@ -60,6 +60,10 @@ pulse_voltage = 2.        # V: phase1Voltage # 100uA/V
 frequency = 30.          # Hz: interPulseInterval in (s) = time bw pulses
 # ==============================================================================
 
+phasic = 2
+train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
+
+
 # ========= Experiment Parameters ==========   
 
 channel_num = int(options.channel_num)  # which channel will be the output channel from PulsePal during stim
@@ -150,12 +154,12 @@ if mode == 'naked':
     def interfaceKitSensorChanged(e):
         source = e.device
         # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
-        sensor_events.append({'index':e.index, 'value':e.value,'time':datetime.now().strftime(fmt)})
+        sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
 
     def interfaceKitOutputChanged(e):
         source = e.device
         # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
-        output_events.append({'index':e.index, 'value':e.state, 'time':datetime.now().strftime(fmt)})
+        output_events.append({'index':e.index, 'value':e.state, 'time':time.time()})
 
     # def detectSensorThreshold(e):
     #     source = e.device
@@ -331,12 +335,13 @@ def do_print():
     L = []
     thread.start_new_thread(input_thread, (L,))
 
+    D = dict()
     nt = 0
     nd = 0
     nb = 0
-    n_targets = []
-    n_distractors = []
-    n_both = []
+    D['n_targets'] = []
+    D['n_distractors'] = []
+    D['n_both'] = []
 
     while True:
 
@@ -346,6 +351,7 @@ def do_print():
         distractor_port_val = device.getSensorValue(distractor_port)
 
         if (target_port_val >= threshold) and (distractor_port_val < threshold):
+
             # trigger pulse
             if mode=='pulsepal':
                 print "HEYO"
@@ -355,35 +361,42 @@ def do_print():
                 pulse.setDisplay("Channel 1", "done!!!")
             else:
                 # print "Triggering DO channel %i" % ext_trigger
-                device.setOutputState(ext_trigger, True)
-                device.setOutputState(ext_trigger, False)
-
-            # time.sleep(0.01)
+                device.setOutputState(ext_trigger, True)    # trigger once
+                device.setOutputState(ext_trigger, False)   # turn off
+            
+            time.sleep(train_duration)                      # wait until train is done
 
             nt += 1
-            n_targets.append((datetime.now().strftime(fmt), nt))
 
         elif (distractor_port_val >= threshold) and (target_port_val < threshold):
 
+            # do nothing
             nd += 1
-            n_distractors.append((datetime.now().strftime(fmt), nd))
 
         elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
 
+            # do nothing
             nb += 1
-            n_both.append((datetime.now().strftime(fmt), nb))
+
+        print nt, nd, nb
+        loopnow = time.time()
+        D['n_targets'].append((loopnow, nt))
+        D['n_distractors'].append((loopnow, nd))
+        D['n_both'].append((loopnow, nb))
 
         # time.sleep(.1)
         if L: 
             print "Exiting loop..."
             break
 
-    return n_distractors, n_targets, n_both
+    return D
             # print "Hi Mom!"
 
 if __name__ == '__main__':
     try:
         print "Press ENTER to quit"
+
+        strt_time = time.time()
 
         if program:
 
@@ -392,15 +405,14 @@ if __name__ == '__main__':
 
         else:
 
-            n_distractors, n_targets, n_both = do_print()
+            counts = do_print()
 
             if save:
                 D = dict()
                 E = dict()
 
-                D['n_distractors'] = n_distractors
-                D['n_targets'] = n_targets
-                D['n_both'] = n_both
+                D['counters'] = counts
+                D['lick_threshold'] = threshold
 
                 D['mode'] = mode
                 D['ext_trigger'] = ext_trigger
@@ -413,6 +425,8 @@ if __name__ == '__main__':
                 D['pulse_width'] = pulse_width
                 D['pulse_voltage'] = pulse_voltage
                 D['frequency'] = frequency
+                D['start_time'] = strt_time
+                D['end_time'] = time.time()
 
                 datestr = datetime.now().strftime(fmt)
                 fname = animalID + '_' + datestr + '_params.pkl'
