@@ -55,9 +55,9 @@ fmt = '%Y%m%d_%H%M%S%f'
 # STIMULATION PARAMETERS:   # EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
 # ==============================================================================
 n_pulses = 8                # num of pulses for reward
-pulse_width = 0.5        # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 2.        # V: phase1Voltage # 100uA/V
-frequency = 30.          # Hz: interPulseInterval in (s) = time bw pulses
+pulse_width = 0.7        # ms: phase1Duration = pulse_width/1000. (s)
+pulse_voltage = 1.        # V: phase1Voltage # 100uA/V
+frequency = 100.          # Hz: interPulseInterval in (s) = time bw pulses
 # ==============================================================================
 
 phasic = 2
@@ -378,7 +378,7 @@ def do_print():
             # do nothing
             nb += 1
 
-        print nt, nd, nb
+        # print nt, nd, nb
         loopnow = time.time()
         D['n_targets'].append((loopnow, nt))
         D['n_distractors'].append((loopnow, nd))

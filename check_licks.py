@@ -67,15 +67,14 @@ trigger_times = [i['time'] for i in trigger_evs if i['index']==params['ext_trigg
 strt  = params['start_time'] #int(sevs[0]['time'].split('_')[1][0:4])
 end = params['end_time'] #int(curr_session[0].split('_')[2][0:4])
 
-taxis = range((end-strt)+1)
-# rel_targ_times = [(1-(i[0]/end))*len(taxis) for i in target_vals]
-y1 = np.where(i[0])
 
-[np.where(taxis == min(taxis, key=lambda x: abs(float(x) - i[0]))) for i in target_vals]
+taxis = np.linspace(strt, end, num=len(target_vals), endpoint=True)
+daxis = np.linspace(strt, end, num=len(distractor_vals), endpoint=True)
+# plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
 
+plt.plot(taxis, [i[1] for i in target_vals], 'r*', label='target')
+plt.plot(daxis, [i[1] for i in distractor_vals], 'go', label='distractor')
 
-plt.plot(np.linspace(strt, end, len(sevs), endpoint=True), [i[1] for i in target_vals], 'r*', label='target')
-plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
 plt.xlabel('time (ms)')
 plt.ylabel('sensor value')
 plt.title('time spent licking each port')
