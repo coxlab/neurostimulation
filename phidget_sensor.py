@@ -55,8 +55,8 @@ fmt = '%Y%m%d_%H%M%S%f'
 # STIMULATION PARAMETERS:   # EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
 # ==============================================================================
 n_pulses = 8                # num of pulses for reward
-pulse_width = 0.7        # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 1.        # V: phase1Voltage # 100uA/V
+pulse_width = .700        # ms: phase1Duration = pulse_width/1000. (s)
+pulse_voltage = 2.        # V: phase1Voltage # 100uA/V
 frequency = 100.          # Hz: interPulseInterval in (s) = time bw pulses
 # ==============================================================================
 
@@ -74,10 +74,11 @@ threshold = float(options.threshold)    # value of Phidget sensor channel that c
 lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
 
 
-port_names = ["LEFT", "RIGHT"]
+# port_names = ["LEFT", "RIGHT"]
+port_names = ["CENTER"]
 if lick_port==1:
-    target_port = 5 # LEFT PORT
-    distractor_port = 7
+    target_port = 6 #5 # LEFT PORT
+    # distractor_port = 7
 else:
     target_port = 7 # RIGHT PORT
     distractor_port = 5
@@ -348,13 +349,13 @@ def do_print():
         # print "."
         # poll the sensors:
         target_port_val = device.getSensorValue(target_port);
-        distractor_port_val = device.getSensorValue(distractor_port)
+        # distractor_port_val = device.getSensorValue(distractor_port)
 
-        if (target_port_val >= threshold) and (distractor_port_val < threshold):
+        # if (target_port_val >= threshold) and (distractor_port_val < threshold):
+        if (target_port_val >= threshold):
 
             # trigger pulse
             if mode=='pulsepal':
-                print "HEYO"
                 pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
                 pulse.setDisplay("Channel 1", "ZAP!!!")
                 print pulse.phase1Voltage, pulse.phase2Voltage
@@ -368,21 +369,21 @@ def do_print():
 
             nt += 1
 
-        elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+        # elif (distractor_port_val >= threshold) and (target_port_val < threshold):
 
-            # do nothing
-            nd += 1
+        #     # do nothing
+        #     nd += 1
 
-        elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
+        # elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
 
-            # do nothing
-            nb += 1
+        #     # do nothing
+        #     nb += 1
 
         # print nt, nd, nb
-        loopnow = time.time()
-        D['n_targets'].append((loopnow, nt))
-        D['n_distractors'].append((loopnow, nd))
-        D['n_both'].append((loopnow, nb))
+        # loopnow = time.time()
+        D['n_targets'].append((time.time(), nt))
+        # D['n_distractors'].append((loopnow, nd))
+        # D['n_both'].append((loopnow, nb))
 
         # time.sleep(.1)
         if L: 
@@ -390,7 +391,7 @@ def do_print():
             break
 
     return D
-            # print "Hi Mom!"
+
 
 if __name__ == '__main__':
     try:
@@ -401,7 +402,6 @@ if __name__ == '__main__':
         if program:
 
             print "re-programming successful"
-            pass
 
         else:
 
@@ -419,8 +419,8 @@ if __name__ == '__main__':
                 D['target_port'] = port_names[lick_port]
                 D['target_port_channel'] = target_port
 
-                D['distractor_port'] = port_names[lick_port]
-                D['distractor_port_channel'] = distractor_port
+                # D['distractor_port'] = port_names[lick_port]
+                # D['distractor_port_channel'] = distractor_port
                 D['n_pulses'] = n_pulses
                 D['pulse_width'] = pulse_width
                 D['pulse_voltage'] = pulse_voltage
@@ -447,87 +447,6 @@ if __name__ == '__main__':
     except PhidgetException as e:
         print "Phidget Exception %i: %s" % (e.code, e.details)
         exit(1)
-# try:
-    # while True:
-    #     print "."
-    #     # poll the sensors:
-    #     target_port_val = device.getSensorValue(target_port);
-    #     distractor_port_val = device.getSensorValue(distractor_port)
-
-    #     if (target_port_val >= threshold) and (distractor_port_val < threshold):
-    #         # trigger pulse
-    #         if program:
-    #             print "HEYO"
-    #             pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
-    #             pulse.setDisplay("Channel 1", "ZAP!!!")
-    #             print pulse.phase1Voltage, pulse.phase2Voltage
-    #             pulse.setDisplay("Channel 1", "done!!!")
-    #         else:
-    #             # print "Triggering DO channel %i" % ext_trigger
-    #             device.setOutputState(ext_trigger, True)
-    #             device.setOutputState(ext_trigger, False)
-
-    #         time.sleep(0.01)
-
-    #         nt += 1
-    #         n_targets.append((datetime.now().strftime(fmt), nt))
-
-    #     elif (distractor_port_val >= threshold) and (target_port_val < threshold):
-
-    #         nd += 1
-    #         n_distractors.append((datetime.now().strftime(fmt), nd))
-
-    #     elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
-
-    #         nb += 1
-    #         n_both.append((datetime.now().strftime(fmt), nb))
-
-    #     choice = raw_input("> ")
-
-    #     if choice == 'q' :
-    #         print "You win"
-    #         input("yay")
-    #         break
-
-# except PhidgetException as e:
-#     print "Phidget Exception %i: %s" % (e.code, e.details)
-#     exit(1)
-
-
-    # if save:
-    #     D = dict()
-    #     E = dict()
-
-    #     D['n_distractors'] = n_distractors
-    #     D['n_targets'] = n_targets
-    #     D['n_both'] = n_both
-
-    #     D['mode'] = mode
-    #     D['ext_trigger'] = ext_trigger
-    #     D['target_port'] = port_names[lick_port]
-    #     D['target_port_channel'] = target_port
-
-    #     D['distractor_port'] = port_names[lick_port]
-    #     D['distractor_port)channel'] = distractor_port
-    #     D['n_pulses'] = n_pulses
-    #     D['pulse_width'] = pulse_width
-    #     D['pulse_voltage'] = pulse_voltage
-    #     D['frequency'] = frequency
-
-    #     datestr = datetime.now().strftime(fmt)
-    #     fname = animalID + '_' + datestr + '_params.pkl'
-    #     with open(os.path.join(output_path, fname), 'wb') as f:
-    #         pkl.dump(D, f)
-    #         print "saved counters:"
-    #         print D
-
-    #     fname = animalID + '_' + datestr + '_events.pkl'
-    #     E['output'] = output_events
-    #     E['sensor'] = sensor_events
-    #     with open(os.path.join(output_path, fname), 'wb') as f:
-    #         pkl.dump(E, f)
-    #         print "saved events:"
-    #         print E
 
     print("Press Enter to close")
 
