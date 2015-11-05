@@ -35,7 +35,7 @@ parser.add_option('-O', '--output-path', action="store", dest="output_path", def
 parser.add_option('-s', '--sub', action="store", dest="animalID", default="test", help="subject ID")
 
 parser.add_option('-c', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation")
-parser.add_option('-t', '--thresh', action="store", dest="threshold", default="800", help="lick sensor threshold value")
+parser.add_option('-t', '--thresh', action="store", dest="threshold", default="500", help="lick sensor threshold value")
 parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
 
 (options, args) = parser.parse_args()
@@ -46,11 +46,6 @@ output_path = options.output_path
 animalID = options.animalID
 save = options.save_data
 
-if save:
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
-
-fmt = '%Y%m%d_%H%M%S%f'
 
 # ==============================================================================
 # STIMULATION PARAMETERS:   # EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
@@ -63,7 +58,6 @@ phasic = 2.               # n phases (i.e, biphasic or monophasic)
 # ==============================================================================
 
 train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
-
 
 # ========= Experiment Parameters ==========   
 
@@ -80,6 +74,8 @@ print "Channel status: ", channels
 threshold = float(options.threshold)    # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)      # reward for licking LEFT or RIGHT port (currently, just reward)
 
+ext_trigger = 0 # DO channel on phidget output (connect to Trigger Ch 1)
+
 
 # port_names = ["LEFT", "RIGHT"]
 port_names = ["CENTER"]
@@ -90,6 +86,36 @@ else:
     target_port = 7 # RIGHT PORT
     distractor_port = 5
 
+
+# SAVE STUFF:
+
+fmt = '%Y%m%d_%H%M%S%f'
+if save:
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
+
+
+    # datestr = datetime.now().strftime(fmt)
+    # fname = animalID + '_' + datestr + '_params.pkl'
+    # with open(os.path.join(output_path, fname), 'wb') as f:
+    #     pkl.dump(D, f)
+    #     print "saved counters."
+        # print D
+
+    datestr = datetime.now().strftime(fmt)
+
+    # Open write file for phidget IO events:
+    fname = animalID + '_' + datestr + '_events.pkl'
+    # E['output'] = output_events
+    # E['sensor'] = sensor_events
+    fn_evs = open(os.path.join(output_path, fname), 'wb')
+        # pkl.dump(E, f)
+        # print "saving events."
+        # print E
+
+    # Open write file for phidget IO events:    
+    fname = animalID + '_' + datestr + '_params.pkl'
+    fn_params = open(os.path.join(output_path, fname), 'wb')
 
 # MWorks stuff
 if mode=='mworks':
@@ -163,12 +189,26 @@ if mode == 'naked':
     def interfaceKitSensorChanged(e):
         source = e.device
         # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
-        sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
+        if (e.index==target_port) and (e.value >=threshold):
+            # print "DETECTED: %i, %i" % (e.index, e.value)
+            # sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
+            if save:
+                pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_evs)
+            else:
+                print "LICK: %i, %i" % (e.index, e.value)
+            # print sensor_events
 
     def interfaceKitOutputChanged(e):
         source = e.device
         # print("InterfaceKit %i: Output %i: %s" % (source.getSerialNum(), e.index, e.state))
-        output_events.append({'index':e.index, 'value':e.state, 'time':time.time()})
+        if e.index==ext_trigger:
+            # output_events.append({'index':e.index, 'value':e.state, 'time':time.time()})
+            if save:
+                pkl.dump({'trigger': {'index':e.index, 'value':e.state,'time':time.time()}}, fn_evs)
+            else:
+                print "TRIGGER: %i, %i" % (e.index, e.state)
+
+        # print output_events
 
     # def detectSensorThreshold(e):
     #     source = e.device
@@ -354,7 +394,7 @@ else:
 
     print "Parameters accepted! Continuing... [ctrl+C to Quit]"
 
-    ext_trigger = 0 # DO channel on phidget output (connect to Trigger Ch 1)
+    # ext_trigger = 0 # DO channel on phidget output (connect to Trigger Ch 1)
 
 # ========== DO STUFF ==========
 
@@ -371,7 +411,7 @@ def input_thread(L):
     raw_input()
     L.append(None)
     
-def do_print():
+def trigger_stim():
 
     L = []
     thread.start_new_thread(input_thread, (L,))
@@ -410,6 +450,8 @@ def do_print():
 
             nt += 1
 
+            D['n_targets'].append((time.time(), nt))
+
         # elif (distractor_port_val >= threshold) and (target_port_val < threshold):
 
         #     # do nothing
@@ -422,7 +464,7 @@ def do_print():
 
         # print nt, nd, nb
         # loopnow = time.time()
-        D['n_targets'].append((time.time(), nt))
+        # D['n_targets'].append((time.time(), nt))
         # D['n_distractors'].append((loopnow, nd))
         # D['n_both'].append((loopnow, nb))
 
@@ -436,9 +478,31 @@ def do_print():
 
 if __name__ == '__main__':
     try:
+
+        parameters = dict()
+
         print "Press ENTER to quit"
 
         strt_time = time.time()
+
+        parameters['lick_threshold'] = threshold
+
+        parameters['mode'] = mode
+        parameters['ext_trigger'] = ext_trigger
+        parameters['target_port'] = port_names[lick_port-1]
+        parameters['target_port_channel'] = target_port
+
+        # D['distractor_port'] = port_names[lick_port]
+        # D['distractor_port_channel'] = distractor_port
+        parameters['n_pulses'] = n_pulses
+        parameters['pulse_width'] = pulse_width
+        parameters['pulse_voltage'] = pulse_voltage
+        parameters['frequency'] = frequency
+        parameters['start_time'] = strt_time
+        parameters['end_time'] = time.time()
+
+        pkl.dump(parameters, fn_params)
+
 
         if program:
 
@@ -446,43 +510,50 @@ if __name__ == '__main__':
 
         else:
 
-            counts = do_print()
+            counts = trigger_stim()
 
-            if save:
-                D = dict()
-                E = dict()
 
-                D['counters'] = counts
-                D['lick_threshold'] = threshold
+        if save:
+            while 1:
+                print "saving..."
+                pkl.dump({'counts': counts}, fn_evs)
+                break
 
-                D['mode'] = mode
-                D['ext_trigger'] = ext_trigger
-                D['target_port'] = port_names[lick_port-1]
-                D['target_port_channel'] = target_port
+            # if save:
+            #     D = dict()
+            #     E = dict()
 
-                # D['distractor_port'] = port_names[lick_port]
-                # D['distractor_port_channel'] = distractor_port
-                D['n_pulses'] = n_pulses
-                D['pulse_width'] = pulse_width
-                D['pulse_voltage'] = pulse_voltage
-                D['frequency'] = frequency
-                D['start_time'] = strt_time
-                D['end_time'] = time.time()
+            #     D['counters'] = counts
+            #     D['lick_threshold'] = threshold
 
-                datestr = datetime.now().strftime(fmt)
-                fname = animalID + '_' + datestr + '_params.pkl'
-                with open(os.path.join(output_path, fname), 'wb') as f:
-                    pkl.dump(D, f)
-                    print "saved counters."
-                    # print D
+            #     D['mode'] = mode
+            #     D['ext_trigger'] = ext_trigger
+            #     D['target_port'] = port_names[lick_port-1]
+            #     D['target_port_channel'] = target_port
 
-                fname = animalID + '_' + datestr + '_events.pkl'
-                E['output'] = output_events
-                E['sensor'] = sensor_events
-                with open(os.path.join(output_path, fname), 'wb') as f:
-                    pkl.dump(E, f)
-                    print "saved events."
-                    # print E
+            #     # D['distractor_port'] = port_names[lick_port]
+            #     # D['distractor_port_channel'] = distractor_port
+            #     D['n_pulses'] = n_pulses
+            #     D['pulse_width'] = pulse_width
+            #     D['pulse_voltage'] = pulse_voltage
+            #     D['frequency'] = frequency
+            #     D['start_time'] = strt_time
+            #     D['end_time'] = time.time()
+
+            #     datestr = datetime.now().strftime(fmt)
+            #     fname = animalID + '_' + datestr + '_params.pkl'
+            #     with open(os.path.join(output_path, fname), 'wb') as f:
+            #         pkl.dump(D, f)
+            #         print "saved counters."
+            #         # print D
+
+            #     fname = animalID + '_' + datestr + '_events.pkl'
+            #     E['output'] = output_events
+            #     E['sensor'] = sensor_events
+            #     with open(os.path.join(output_path, fname), 'wb') as f:
+            #         pkl.dump(E, f)
+            #         print "saved events."
+            #         # print E
 
 
     except PhidgetException as e:
@@ -494,6 +565,10 @@ if __name__ == '__main__':
     chr = sys.stdin.read(1)
 
     print("Closing...")
+    if save:
+        fn_params.close()
+        fn_evs.close()
+        print "closed data file"
 
     # Close Phidget
     if mode=='naked':

@@ -37,29 +37,43 @@ files = sorted([f for f in files if os.path.splitext(f)[1] == '.pkl'], reverse=T
 session_times = sorted(set([f.split('_')[1]+'_'+f.split('_')[2] for f in files]), reverse=True)
 curr_session = [f for f in files if session_times[0] in f]
 for fname in curr_session:
-	with open(os.path.join(datadir, fname), 'rb') as f:
-		if 'params' in fname:
-			params = pkl.load(f)
-		else:
-			evs =pkl.load(f)
+    f = open(os.path.join(datadir, fname), 'rb')
+    evs = []
+    if 'params' in fname:
+        params = pkl.load(f)
+    else:
+        while 1:
+            try:
+                evs.append(pkl.load(f))
+            except EOFError:
+                break
 
-trigger_evs = evs['output'] # trigger events
-sensor_evs = evs['sensor'] # sensor events
-
-n_triggers_detected = len([t['time'] for t in trigger_evs if t['index']==params['ext_trigger'] and t['value']])
-n_target_licks = max([i[1] for i in params['counters']['n_targets']])
-n_distractor_licks = max([i[1] for i in params['counters']['n_distractors']])
-n_licking_both = max([i[1] for i in params['counters']['n_both']])
+sensor_keys = set([i.keys()[0] for i in evs])
+events = dict()
+for key in sensor_keys:
+    events[key] = [i[key] for i in evs if key in i.keys()]
 
 
-if not len(n_target_licks) == len(n_triggers_detected):
-	print "N target licks and N rewarded triggers do not match!"
-	print "N target licks: %i, N triggers %i." % (n_target_licks, n_triggers_detected)
 
-target_vals = [(i['time'], i['value']) for i in sensor_evs if i['index']==params['target_port_channel']]
-distractor_vals = [(i['time'], i['value']) for i in sensor_evs if i['index']==params['distractor_port_channel']]
+# trigger_evs = events['output'] # trigger events
+# sensor_evs = evs['sensor'] # sensor events
 
-trigger_times = [i['time'] for i in trigger_evs if i['index']==params['ext_trigger'] and i['value'] ]
+n_triggers_detected = len([t['time'] for t in events['trigger'] if t['index']==params['ext_trigger'] and t['value']])
+n_sensors_detected = len([t['time'] for t in events['sensor'] if t['index']==params['target_port_channel'] and t['value'] > params['lick_threshold']])
+
+target_counts = max([i[1] for i in events['counts'][0]['n_targets']])           # this counts EACH lick
+distractor_counts = max([i[1] for i in events['count'][0]['n_distractors']])    # " "
+both_counts = max([i[1] for i in params['counters'][0]['n_both']])
+
+
+if not len(n_sensors_detected) == len(n_triggers_detected):
+    print "N target licks and N triggers do not match!"
+    print "N target licks: %i, N triggers %i." % (n_target_licks, n_triggers_detected)
+
+target_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['target_port_channel']]
+# distractor_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['distractor_port_channel']]
+
+trigger_times = [i['time'] for i in events['trigger'] if i['index']==params['ext_trigger'] and i['value'] ]
 
 # plt.plot([i[0] for i in target_vals], [i[1] for i in target_vals], 'r*', label='target')
 # plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
@@ -69,11 +83,10 @@ end = params['end_time'] #int(curr_session[0].split('_')[2][0:4])
 
 
 taxis = np.linspace(strt, end, num=len(target_vals), endpoint=True)
-daxis = np.linspace(strt, end, num=len(distractor_vals), endpoint=True)
-# plt.plot([i[0] for i in distractor_vals], [i[1] for i in distractor_vals], 'go', label='distractor')
+# daxis = np.linspace(strt, end, num=len(distractor_vals), endpoint=True)
 
 plt.plot(taxis, [i[1] for i in target_vals], 'r*', label='target')
-plt.plot(daxis, [i[1] for i in distractor_vals], 'go', label='distractor')
+# plt.plot(daxis, [i[1] for i in distractor_vals], 'go', label='distractor')
 
 plt.xlabel('time (ms)')
 plt.ylabel('sensor value')
