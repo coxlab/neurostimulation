@@ -499,7 +499,7 @@ if __name__ == '__main__':
         parameters['pulse_voltage'] = pulse_voltage
         parameters['frequency'] = frequency
         parameters['start_time'] = strt_time
-        parameters['end_time'] = time.time()
+        # parameters['end_time'] = time.time()
 
         pkl.dump(parameters, fn_params)
 
@@ -517,6 +517,11 @@ if __name__ == '__main__':
             while 1:
                 print "saving..."
                 pkl.dump({'counts': counts}, fn_evs)
+
+                parameters['end_time'] = time.time()
+
+                pkl.dump(parameters, fn_params)
+
                 break
 
             # if save:
