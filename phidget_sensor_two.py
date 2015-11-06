@@ -52,7 +52,7 @@ save = options.save_data
 # ==============================================================================
 n_pulses = 8                # num of pulses for reward
 pulse_width = .700        # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 2.        # V: phase1Voltage # 100uA/V
+pulse_voltage = 1.        # V: phase1Voltage # 100uA/V
 frequency = 100.          # Hz: interPulseInterval in (s) = time bw pulses
 phasic = 2.               # n phases (i.e, biphasic or monophasic)
 # ==============================================================================
