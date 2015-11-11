@@ -103,12 +103,19 @@ plots = dict()
 
 cidx = 0
 for k in use_these:
-
+    
+    print k
     cidx += 1
+
+    if not E[k]['params']:
+        print "No saved info for %s " % k
+        continue
+
     plots[k] = dict()
 
     evs = E[k]['evs']
-    params = E[k]['params']
+    params = E[k]['params'][0]
+
     if k=='combo':
         fname = sorted_sessions[1]
         strt_secs = params['start_time']
@@ -131,7 +138,7 @@ for k in use_these:
 
 
     print fname
-    print params['counts']
+    # print params['counts']
 
     animal = os.path.split(os.path.split(datadir)[0])[1] #fname.split('_')[0]
     date = fname.split('_')[0] #fname.split('_')[1]

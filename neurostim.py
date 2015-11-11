@@ -60,7 +60,7 @@ one_port = options.one_port
 n_pulses = 8                # num of pulses for reward
 pulse_width = .700        # ms: phase1Duration = pulse_width/1000. (s)
 pulse_voltage = 1.        # V: phase1Voltage # 100uA/V
-frequency = 100.          # Hz: interPulseInterval in (s) = time bw pulses
+frequency = 90.          # Hz: interPulseInterval in (s) = time bw pulses
 phasic = 2.               # n phases (i.e, biphasic or monophasic)
 
 train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
