@@ -102,7 +102,9 @@ if play_tones:
     fail_tone = pyglet.media.load('./stimuli/sounds/failure_DZ.wav', streaming=False)
 
 timeout_time = 5
+timeout_time_both = 2
 
+head_sensor = 4
 
 # ==============================================================================
 # SAVE STUFF:
@@ -122,6 +124,10 @@ if save:
     # Open write file for experiment parameters:    
     fname = animalID + '_' + datestr + '_params.pkl'
     fn_params = open(os.path.join(output_path, fname), 'wb')
+
+    # Open write file for head sensing:    
+    fname = animalID + '_' + datestr + '_head.pkl'
+    fn_head = open(os.path.join(output_path, fname), 'wb')
 
 
 # ==============================================================================
@@ -223,6 +229,14 @@ if mode == 'naked':
                 pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_evs)
             else:
                 print "LICK: %i, %i" % (e.index, e.value)
+        
+        if (e.index==head_sensor):
+            # print "DETECTED: %i, %i" % (e.index, e.value)
+            # sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
+            if save:
+                pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_head)
+
+
             # print sensor_events
 
     def interfaceKitOutputChanged(e):
@@ -433,6 +447,9 @@ if mode=='pulsepal':
         print "|------------|----------------|-------------|-----------|"
         print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
+        print "Train duration: %f sec" % train_duration
+        print "Biphasic pulses: %s" % str(phasic)
+
         print "Press Enter to CONTINUE..."
         chr = sys.stdin.read(1)
 
@@ -448,6 +465,8 @@ else:
     print "|------------|----------------|-------------|-----------|"
     print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
+    print "Train duration: %f sec" % train_duration
+    print "Biphasic pulses: %s" % str(phasic)
     print "Press Enter to CONTINUE..."
     chr = sys.stdin.read(1)
 
@@ -542,7 +561,7 @@ def trigger_stim():
 
                 # force timeout? [and play sound]
                 now = time.time()
-                while time.time() - now <= timeout_time:
+                while time.time() - now <= timeout_time_both:
                     if play_tones:
                         fail_tone.play()
                         time.sleep(0.2)
@@ -691,6 +710,7 @@ if __name__ == '__main__':
     if save:
         fn_params.close()
         fn_evs.close()
+        fn_head.close()
         print "closed data file"
 
     # Close Phidget
