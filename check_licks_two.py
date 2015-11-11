@@ -32,6 +32,11 @@ import matplotlib.pyplot as plt
 import itertools
 
 datadir = sys.argv[1] #'/home/juliana/Documents/dtest/'
+combo_flag = sys.argv[2]
+special_combo = False
+if combo_flag==1:
+    special_combo = True
+
 files = os.listdir(datadir)
 files = sorted([f for f in files if os.path.splitext(f)[1] == '.pkl'], reverse=True) # most recent
 
@@ -53,31 +58,47 @@ for s in session_times:
     for fname in curr_session:
         f = open(os.path.join(datadir, fname), 'rb')
         if 'params' in fname:
-            print "hi"
-            E[s]['params'] = pkl.load(f)
-            print E[s]['params']
+            print "Getting params..."
+            # E[s]['params'] = pkl.load(f)
+            # print E[s]['params']
+            E[s]['params'] = []
+            while 1:
+                try:
+                    E[s]['params'].append(pkl.load(f))
+                # except TypeError:
+                #     print "bad pickle"
+                #     break
+                except EOFError:
+                    break
+                # except:
+                #     break
             # f.close()
         else:
             E[s]['evs'] = []
             while 1:
                 try:
                     E[s]['evs'].append(pkl.load(f))
-                except TypeError:
-                    print "bad pickle"
-                    break
+                # except TypeError:
+                #     print "bad pickle"
+                #     break
                 except EOFError:
                     break
-                except:
-                    break
+                # except:
+                #     break
             # f.close()
 
 # Do this dumb adjustment to combine sessions with the same parameter:
-sorted_sessions = sorted(E.keys())
-E['combo'] = dict()
-E['combo']['evs'] = list(itertools.chain.from_iterable([E[sorted_sessions[1]]['evs'], E[sorted_sessions[2]]['evs']]))
-E['combo']['params'] = E[sorted_sessions[1]]['params']
+if special_combo:
+    sorted_sessions = sorted(E.keys())
+    E['combo'] = dict()
+    E['combo']['evs'] = list(itertools.chain.from_iterable([E[sorted_sessions[1]]['evs'], E[sorted_sessions[2]]['evs']]))
+    E['combo']['params'] = E[sorted_sessions[1]]['params']
 
-use_these = [sorted_sessions[0], 'combo']
+    use_these = [sorted_sessions[0], 'combo']
+else:
+    use_these = sorted(E.keys())
+
+print use_these   
 plots = dict()
 
 cidx = 0
@@ -110,6 +131,7 @@ for k in use_these:
 
 
     print fname
+    print params['counts']
 
     animal = os.path.split(os.path.split(datadir)[0])[1] #fname.split('_')[0]
     date = fname.split('_')[0] #fname.split('_')[1]

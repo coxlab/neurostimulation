@@ -1,0 +1,122 @@
+<?xml version="1.0" standalone="no"?>
+<monkeyml version="1.0">
+    <io_devices tag="IO Devices">
+        <iodevice type="serverside_conduit" tag="My Server-side Event Conduit" resource_name="server_conduit"></iodevice>
+        <iodevice tag="dummy" priority="" type="dummy" id="" alt=""></iodevice>
+        <iodevice type="phidget" tag="phidget" alt="dummy" priority="" id="">
+            <iochannel type="phidget" tag="channel4" variable="head_input" index="4" capability="analog_input" rate="8" sensitivity="10"></iochannel>
+            <iochannel type="phidget" tag="channel1" variable="lick_input1" index="5" capability="analog_input" rate="0" sensitivity="0"></iochannel>
+            <iochannel type="phidget" tag="channel2" variable="lick_input2" index="7" capability="analog_input" rate="0" sensitivity="0"></iochannel>
+            <iochannel type="phidget" tag="digout" variable="stim_trigger" index="0" capability="digital_output" rate="0" sensitivity="0"></iochannel>
+        </iodevice>
+    </io_devices>
+    <variables tag="Variables">
+        <variable tag="stim_trigger" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="lick_input1" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="lick_input2" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="licksensor1_max" scope="global" logging="when_changed" default_value="1000" type="integer" persistant="1"></variable>
+        <variable tag="licksensor2_max" scope="global" logging="when_changed" default_value="1000" type="integer" persistant="1"></variable>
+        <variable tag="licksensor1_min" scope="global" logging="when_changed" default_value="500" type="integer" persistant="1"></variable>
+        <variable tag="licksensor2_min" scope="global" logging="when_changed" default_value="500" type="integer" persistant="1"></variable>
+        <variable tag="head_input" scope="global" logging="when_changed" default_value="1000" type="float"></variable>
+        <variable tag="headsensor_max" scope="global" logging="when_changed" default_value="500" type="float" persistant="1"></variable>
+        <variable tag="headsensor_min" scope="global" logging="when_changed" default_value="0" type="float" persistant="1"></variable>
+        <variable tag="reward_time" scope="global" logging="when_changed" default_value="2000" type="integer"></variable>
+        <variable tag="head_sense_time" scope="global" logging="when_changed" default_value="5000" type="integer"></variable>
+        <variable tag="default_timeout" scope="global" logging="when_changed" default_value="3000" type="integer"></variable>
+        <variable tag="post_reward_timeout" scope="global" logging="when_changed" default_value="1000" type="integer"></variable>
+        <variable tag="timeout" scope="global" logging="when_changed" default_value="3000" type="integer"></variable>
+        <variable tag="post_reward_flag" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="stim_flag" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="stop_flag" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="hello_world" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+        <variable tag="x" scope="global" logging="when_changed" default_value="0" type="integer"></variable>
+    </variables>
+    <sounds tag="Sounds"></sounds>
+    <stimuli tag="Stimuli">
+        <stimulus tag="background" full_name="background" type="blank_screen" color="0.5,0.5,0.5"></stimulus>
+        <stimulus tag="black_screen" full_name="background" type="blank_screen" color="0, 0, 0"></stimulus>
+    </stimuli>
+    <filters tag="Filters"></filters>
+    <optimizers tag="Optimizers"></optimizers>
+    <experiment tag="New Experiment" full_name="" description="">
+        <protocol tag="New Protocol" nsamples="1" sampling_method="cycles" selection="sequential">
+            <action tag="Start IO Device" type="start_device_IO" device="My Server-side Event Conduit"></action>
+            <action type="assignment" tag="make sure STIM OFF" variable="stim_trigger" value="0"></action>
+            <action type="assignment" tag="make sure post_reward_flag off" variable="post_reward_flag" value="0"></action>
+            <action type="assignment" tag="make sure stim_flag off" variable="stim_flag" value="0"></action>
+            <action type="assignment" tag="make sure stop_flag off" variable="stop_flag" value="0"></action>
+            <action type="assignment" tag="say hi" variable="hello_world" value="1"></action>
+            <action tag="Queue Stimulus background" type="queue_stimulus" stimulus="background"></action>
+            <action tag="Update Stimulus Display 3" type="update_stimulus_display"></action>
+            <trial tag="New Trial" nsamples="1000" sampling_method="cycles" selection="sequential">
+                <task_system tag="New Task System" interruptible="YES">
+                    <task_system_state tag="Begin State System" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="report" tag="Announce Begin State System" message="State system beginning"></action>
+                        <action type="assignment" tag="let hello go" variable="hello_world" value="0"></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition type="direct" tag="Always Go to Sense Head" target="Sense Head"></transition>
+                    </task_system_state>
+                    <task_system_state tag="Sense Head" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="start_timer" tag="Start Head_Timer" timer="Head_Timer" timebase="" duration="head_sense_time" duration_units="ms"></action>
+                        <action type="report" tag="Report 2" message="Looking for head-sensor... $head_input "></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition type="conditional" tag="If Head is sensed, Transition to Check for licking" condition="head_input #LT headsensor_max #AND head_input #GE headsensor_min" target="Check for licking"></transition>
+                        <transition type="timer_expired" tag="If Head_Timer Expired, Transition to Finish" target="Finish" timer="Head_Timer"></transition>
+                    </task_system_state>
+                    <task_system_state tag="Check for licking" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="report" tag="Report" message="Checking for licking..."></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition type="conditional" tag="If licking PORT 1, reward" condition="(lick_input1 #LE licksensor1_max #AND lick_input1 #GE licksensor1_min) #AND (lick_input2 #LT licksensor2_min) " target="Reward"></transition>
+                        <transition type="conditional" tag="If licking PORT 2 or BOTH, punish" condition="(lick_input2 #LE licksensor2_max #AND lick_input2 #GE licksensor2_min) #AND (lick_input1 #LT licksensor1_min #OR (lick_input1 #LE licksensor1_max #AND lick_input1 #GE licksensor1_min))" target="Punish"></transition>
+                    </task_system_state>
+                    <task_system_state tag="Reward" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="assignment" tag="set stim flag to 1" variable="stim_flag" value="1"></action>
+                        <action type="assignment" tag="set post_reward_flag to 1" variable="post_reward_flag" value="1"></action>
+                        <action type="assignment" tag="STIM!!" variable="stim_trigger" value="1"></action>
+                        <action type="start_timer" tag="Start Reward_Timer" timer="Reward_Timer" timebase="" duration="reward_time" duration_units="ms"></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition type="timer_expired" tag="If Reward_Timer Expired, Transition to Finish" target="Finish" timer="Reward_Timer"></transition>
+                        <transition type="conditional" tag="If licking PORT 2 (but not PORT 1), punish" condition="(lick_input2 #LE licksensor2_max #AND lick_input2 #GE licksensor2_min) #AND (lick_input1 #LT licksensor1_min)" target="Punish"></transition>
+                    </task_system_state>
+                    <task_system_state tag="Punish" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="if" tag="If post_reward_flag is 1, punish less..." condition="post_reward_flag == 1">
+                            <action tag="Live Queue BLACK" type="live_queue_stimulus" stimulus="black_screen"></action>
+                            <action tag="Update Stimulus Display" type="update_stimulus_display"></action>
+                            <action type="assignment" tag="set timeout for post-reward" variable="timeout" value="post_reward_timeout"></action>
+                            <action tag="Dequeue Stimulus BLACK" type="dequeue_stimulus" stimulus="black_screen"></action>
+                            <action tag="Update Stimulus Display 2" type="update_stimulus_display"></action>
+                        </action>
+                        <action type="if" tag="If post_reward_flag is off, punish!" condition="post_reward_flag == 0">
+                            <action tag="Live Queue BLACK" type="live_queue_stimulus" stimulus="black_screen"></action>
+                            <action tag="Update Stimulus Display" type="update_stimulus_display"></action>
+                            <action type="assignment" tag="set timeout for punish" variable="timeout" value="default_timeout"></action>
+                            <action tag="Dequeue Stimulus BLACK" type="dequeue_stimulus" stimulus="black_screen"></action>
+                            <action tag="Update Stimulus Display 2" type="update_stimulus_display"></action>
+                        </action>
+                        <action type="start_timer" tag="Start Timeout_Timer" timer="Timeout_Timer" timebase="" duration="timeout" duration_units="ms"></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition type="timer_expired" tag="If Timeout Timer Expired, Transition to Finish" target="Finish" timer="Timeout_Timer"></transition>
+                    </task_system_state>
+                    <task_system_state tag="Finish" interruptible="YES">
+                        <action_marker _unmoveable="1" tag="Actions"></action_marker>
+                        <action type="report" tag="Announce Exit State System" message="Leaving state system"></action>
+                        <action type="assignment" tag="set stim flag to 0" variable="stim_flag" value="0"></action>
+                        <action type="assignment" tag="reset timeout" variable="timeout" value="default_timeout"></action>
+                        <action type="assignment" tag="reset post_reward_flag" variable="post_reward_flag" value="0"></action>
+                        <transition_marker _unmoveable="1" tag="Transitions"></transition_marker>
+                        <transition tag="Return to parent task system" type="yield"></transition>
+                    </task_system_state>
+                </task_system>
+                <action type="wait" tag="Wait" duration="1.0" duration_units="s"></action>
+            </trial>
+            <action type="assignment" tag="stop it" variable="stop_flag" value="1"></action>
+            <action tag="Stop IO Device" type="stop_device_IO" device="My Server-side Event Conduit"></action>
+        </protocol>
+    </experiment>
+</monkeyml>

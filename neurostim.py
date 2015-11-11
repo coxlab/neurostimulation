@@ -27,26 +27,32 @@ from datetime import datetime
 import cPickle as pkl
 import thread
 
+import pyglet
 
 parser = optparse.OptionParser()
 parser.add_option('-m', '--mode', type='choice', action="store", dest="mode", default="naked", choices=['naked', 'mworks', 'pulsepal'])
-parser.add_option('-p', '--program', action="store_true", dest="program", default=False, help="program pulse generator only (must be in 'pulsepal' mode)")
+parser.add_option('-P', '--program', action="store_true", dest="program", default=False, help="program pulse generator only (must be in 'pulsepal' mode)")
 parser.add_option('-S', '--save', action="store_true", dest="save_data", default=False, help="save data")
 parser.add_option('-O', '--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
-parser.add_option('-s', '--sub', action="store", dest="animalID", default="test", help="subject ID")
+parser.add_option('-i', '--id', action="store", dest="animalID", default="test", help="subject ID")
 
 parser.add_option('-c', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation, e.g., '-c1'")
 parser.add_option('-t', '--thresh', action="store", dest="threshold", default="500", help="lick sensor threshold value")
 parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
 
+parser.add_option('-p', '--oneport', action="store_true", dest="one_port", default=False, help="one or two-port task?")
+parser.add_option('-s', '--sound', action="store_true", dest="play_tones", default=False, help="play reward and punish tones?")
+
+
 (options, args) = parser.parse_args()
 mode = options.mode
 program = options.program
+play_tones = options.play_tones
 
 output_path = options.output_path
 animalID = options.animalID
 save = options.save_data
-
+one_port = options.one_port
 
 # ==============================================================================
 # STIMULATION PARAMETERS: EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
@@ -92,6 +98,16 @@ else:                                           # TWO ports (or 3?)
         distractor_port = 5
         ignore_port = 1
 
+# import subprocess
+# currdir = os.path.realpath('.')
+# print currdir
+if play_tones:
+    success_tone = pyglet.media.load('./stimuli/sounds/NRsuccess.wav', streaming=False)
+    fail_tone = pyglet.media.load('./stimuli/sounds/failure_DZ.wav', streaming=False)
+
+timeout_time = 5
+
+# return_code = subprocess.call(["afplay", audio_file])
 
 # ==============================================================================
 # SAVE STUFF:
@@ -134,12 +150,13 @@ if mode=='mworks':
     import mworks.conduit
 
     def say_hello(mevt):
+        # print "called"
         if mevt.value:
             print "MWorks connection is G2G!"
-            g2g = 1
+            g2g.append(1)
         else:
-            print "Waiting for MW...."
-            g2g = 0
+            # print "Waiting for MW...."
+            g2g.append(0)
 
         return g2g
 
@@ -153,9 +170,12 @@ if mode=='mworks':
     client.initialize()
 
     # Check for listen:
-    g2g = 0
-    while not g2g:
-        client.register_callback_for_name('hello_world', say_hello)
+    # g2g = []
+    # while not (1 in g2g):
+    #     client.register_callback_for_name('hello_world', say_hello)
+
+    print "LET'S DO IT!!!"
+        # print g2g
 
 
 
@@ -443,7 +463,7 @@ def trigger_stim():
     L = []
     thread.start_new_thread(input_thread, (L,))
 
-    D = dict()
+    # D = dict()
     nt = 0
     nd = 0
     nb = 0
@@ -483,6 +503,10 @@ def trigger_stim():
 
             if (target_port_val >= threshold) and (distractor_port_val < threshold):
 
+                if play_tones:
+                    # play tone:
+                    success_tone.play()
+
                 # trigger pulse
                 if mode=='pulsepal':
                     pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
@@ -501,94 +525,184 @@ def trigger_stim():
 
             elif (distractor_port_val >= threshold) and (target_port_val < threshold):
 
-                # force time out
-                time.sleep(5)
+                # force time out [and play sound]
+                now = time.time()
+                while time.time() - now <= timeout_time:
+                    if play_tones:
+                        fail_tone.play()
+                        time.sleep(0.2)
+                    print time.time() - now <= timeout_time
+
+                # time.sleep(5)
                 nd += 1
 
                 D['n_distractors'].append((time.time(), nd))
 
             elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
 
-                # force timeout?
-                time.sleep(5)
+                # force timeout? [and play sound]
+                now = time.time()
+                while time.time() - now <= timeout_time:
+                    if play_tones:
+                        fail_tone.play()
+                        time.sleep(0.2)
+
+                # time.sleep(5)
                 nb += 1
 
                 D['n_both'].append((time.time(), nb))
 
             # print nt, nd, nb
             # time.sleep(.1)
-            if L: 
-                print "Exiting loop..."
-                break
+        if L: 
+            print "Exiting loop..."
+            break
 
-    return D
+    # return D
 
+
+def trigger_mw():
+
+    def handle_state_mode(mevt):
+        stop_flag.append(mevt.value)
+        return stop_flag
+
+
+    L = []
+    thread.start_new_thread(input_thread, (L,))
+
+    stop_flag = []
+    stim = 0
+    client.register_callback_for_name('stop_flag', handle_state_mode)
+    client.register_callback_for_name('stim_flag', send_trigger)
+
+    while not (1 in stop_flag):
+        if stim:
+            print "TRIGGER!"
+            # device.setOutputState(ext_trigger, True)    # trigger once
+            # time.sleep(train_duration)                  # wait until train is done
+            # device.setOutputState(ext_trigger, False)   # turn off
+
+            nt += 1
+
+            D['n_targets'].append((time.time(), nt))
+
+        if L: 
+            print "Exiting MW loop..."
+            break
+
+# def handle_state_mode(mevt):
+#     stop_flag.append(mevt.value)
+#     return stop_flag
+
+
+def send_trigger(mevt):
+    # print "MW says to trigger..."
+    # stim_flag = evt.value
+    if mevt.value:
+        print "MW SENDING TRIGGER"
+        stim = 1
+    else:
+        stim = 0
+    return stim
+
+
+def save_data(data, fn):
+    print "Trying to save..."
+    pkl.dump(data, fn)
+    print "save successful: %s" % fn
 
 if __name__ == '__main__':
 
-    try:
+    # try:
 
-        parameters = dict()
+    parameters = dict()
 
-        print "Press ENTER to quit gracefully..."
+    print "Press ENTER to quit gracefully..."
 
-        strt_time = time.time()
+    strt_time = time.time()
 
-        parameters['lick_threshold'] = threshold
+    parameters['lick_threshold'] = threshold
 
-        parameters['mode'] = mode
-        parameters['ext_trigger'] = ext_trigger
-        parameters['target_port'] = port_names[lick_port-1]
-        parameters['target_port_channel'] = target_port
+    parameters['mode'] = mode
+    parameters['sound'] = play_tones
 
-        parameters['distractor_port'] = port_names[ignore_port-1]
-        parameters['distractor_port_channel'] = distractor_port
-        parameters['n_pulses'] = n_pulses
-        parameters['pulse_width'] = pulse_width
-        parameters['pulse_voltage'] = pulse_voltage
-        parameters['frequency'] = frequency
-        parameters['start_time'] = strt_time
-        # parameters['end_time'] = time.time()
-        # pkl.dump(parameters, fn_params)
+    parameters['ext_trigger'] = ext_trigger
+    parameters['target_port'] = port_names[lick_port-1]
+    parameters['target_port_channel'] = target_port
+
+    parameters['distractor_port'] = port_names[ignore_port-1]
+    parameters['distractor_port_channel'] = distractor_port
+    parameters['n_pulses'] = n_pulses
+    parameters['pulse_width'] = pulse_width
+    parameters['pulse_voltage'] = pulse_voltage
+    parameters['frequency'] = frequency
+    parameters['start_time'] = strt_time
+    # parameters['end_time'] = time.time()
+    # pkl.dump(parameters, fn_params)
 
 
-        if program:
+    if program:
 
-            print "re-programming successful"
+        print "re-programming successful"
 
-        elif mode=='mworks':
+    elif mode=='mworks':
 
-            print "Entering MW mode - listening for callbacks..."
-            counts = trigger_mw()
+        print "Entering MW mode - listening for callbacks..."
+        
+        D = dict()
 
-        else:
+        trigger_mw()
+
+    else:
+
+        try:
 
             print "Starting session."
-            counts = trigger_stim()
+            # counts = trigger_stim()
+
+            D = dict()
+            # stop_flag = []
+
+            trigger_stim()
+
+        except PhidgetException as e:
+
+            print "Phidget Exception %i: %s" % (e.code, e.details)
+            
+            if save:
+                print "Phidget error detected, will try to save data..."
+                parameters['counts'] = D
+                parameters['end_time'] = time.time()
+                save_data(parameters, fn_params)
+
+            exit(1)
 
 
-        if save:
+    if save:
 
-            print "saving..."
+        print "saving..."
 
-            parameters['counts'] = counts
-            parameters['end_time'] = time.time()
-            pkl.dump(parameters, fn_params)
-            print parameters
+        parameters['counts'] = D #counts
+        parameters['end_time'] = time.time()
+        # pkl.dump(parameters, fn_params)
+        save_data(parameters, fn_params)
 
-            print "DATA SAVED..."
-            print("Press Enter to close")
-            chr = sys.stdin.read(1)
+        print parameters
 
-    except PhidgetException as e:
-        print "Phidget Exception %i: %s" % (e.code, e.details)
-        exit(1)
+        print "DATA SAVED..."
+        print("Press Enter to close")
+        chr = sys.stdin.read(1)
+
+    # except PhidgetException as e:
+    #     print "Phidget Exception %i: %s" % (e.code, e.details)
+    #     exit(1)
 
     print("Press Enter to GTFO")
 
     chr = sys.stdin.read(1)
 
-    print("Closing...")
+    print("Closing datafiles...")
     if save:
         fn_params.close()
         fn_evs.close()
@@ -606,4 +720,4 @@ if __name__ == '__main__':
         pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
 
     print("Done.")
-    # exit(0)
+    exit(0)
