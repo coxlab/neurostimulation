@@ -26,7 +26,6 @@ import optparse
 from datetime import datetime
 import cPickle as pkl
 import thread
-
 import pyglet
 
 parser = optparse.OptionParser()
@@ -43,10 +42,11 @@ parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default
 parser.add_option('-p', '--oneport', action="store_true", dest="one_port", default=False, help="one or two-port task?")
 parser.add_option('-s', '--sound', action="store_true", dest="play_tones", default=False, help="play reward and punish tones?")
 
-
 (options, args) = parser.parse_args()
 mode = options.mode
 program = options.program
+if program:
+    mode='pulsepal' # override incorrect mode setting  
 play_tones = options.play_tones
 
 output_path = options.output_path
@@ -81,7 +81,6 @@ print "Channel status: ", channels              # channels ON or OFF
 
 threshold = float(options.threshold)            # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)              # reward for licking specified port (currently, just reward)
-
 ext_trigger = 0                                 # D.O. channel on phidget (connect to Trigger Ch 1 on PulsePal)
 
 if one_port:
@@ -98,16 +97,12 @@ else:                                           # TWO ports (or 3?)
         distractor_port = 5
         ignore_port = 1
 
-# import subprocess
-# currdir = os.path.realpath('.')
-# print currdir
 if play_tones:
     success_tone = pyglet.media.load('./stimuli/sounds/NRsuccess.wav', streaming=False)
     fail_tone = pyglet.media.load('./stimuli/sounds/failure_DZ.wav', streaming=False)
 
 timeout_time = 5
 
-# return_code = subprocess.call(["afplay", audio_file])
 
 # ==============================================================================
 # SAVE STUFF:
@@ -117,13 +112,6 @@ fmt = '%Y%m%d_%H%M%S%f'
 if save:
     if not os.path.exists(output_path):
         os.mkdir(output_path)
-
-    # datestr = datetime.now().strftime(fmt)
-    # fname = animalID + '_' + datestr + '_params.pkl'
-    # with open(os.path.join(output_path, fname), 'wb') as f:
-    #     pkl.dump(D, f)
-    #     print "saved counters."
-        # print D
 
     datestr = datetime.now().strftime(fmt)
 
@@ -450,6 +438,21 @@ if mode=='pulsepal':
 
         print "Parameters accepted! Continuing... [ctrl+C to Quit]"
 
+else:
+    print "Using last saved settings on PulsePal."
+    print "Output channels: %s" % str(channels)
+    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+    print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
+    print "|------------|----------------|-------------|-----------|"
+    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+    print "|------------|----------------|-------------|-----------|"
+    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+
+    print "Press Enter to CONTINUE..."
+    chr = sys.stdin.read(1)
+
+    print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+
 
 # ========== DO STUFF ==========
 
@@ -493,7 +496,6 @@ def trigger_stim():
                     device.setOutputState(ext_trigger, False)   # turn off
 
                 nt += 1
-
                 D['n_targets'].append((time.time(), nt))
 
         else:
@@ -520,7 +522,6 @@ def trigger_stim():
                     device.setOutputState(ext_trigger, False)   # turn off
 
                 nt += 1
-
                 D['n_targets'].append((time.time(), nt))
 
             elif (distractor_port_val >= threshold) and (target_port_val < threshold):
@@ -531,11 +532,10 @@ def trigger_stim():
                     if play_tones:
                         fail_tone.play()
                         time.sleep(0.2)
-                    print time.time() - now <= timeout_time
+                    print (time.time() - now)
 
                 # time.sleep(5)
                 nd += 1
-
                 D['n_distractors'].append((time.time(), nd))
 
             elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
@@ -549,11 +549,8 @@ def trigger_stim():
 
                 # time.sleep(5)
                 nb += 1
-
                 D['n_both'].append((time.time(), nb))
 
-            # print nt, nd, nb
-            # time.sleep(.1)
         if L: 
             print "Exiting loop..."
             break
@@ -623,14 +620,11 @@ if __name__ == '__main__':
     strt_time = time.time()
 
     parameters['lick_threshold'] = threshold
-
     parameters['mode'] = mode
     parameters['sound'] = play_tones
-
     parameters['ext_trigger'] = ext_trigger
     parameters['target_port'] = port_names[lick_port-1]
     parameters['target_port_channel'] = target_port
-
     parameters['distractor_port'] = port_names[ignore_port-1]
     parameters['distractor_port_channel'] = distractor_port
     parameters['n_pulses'] = n_pulses
@@ -641,43 +635,34 @@ if __name__ == '__main__':
     # parameters['end_time'] = time.time()
     # pkl.dump(parameters, fn_params)
 
-
     if program:
 
-        print "re-programming successful"
+        print "Re-programming successful"
 
     elif mode=='mworks':
 
         print "Entering MW mode - listening for callbacks..."
-        
         D = dict()
-
         trigger_mw()
 
-    else:
+    else: # mode is "naked" otherwise...
 
         try:
 
             print "Starting session."
             # counts = trigger_stim()
-
             D = dict()
-            # stop_flag = []
-
             trigger_stim()
 
         except PhidgetException as e:
 
             print "Phidget Exception %i: %s" % (e.code, e.details)
-            
             if save:
                 print "Phidget error detected, will try to save data..."
                 parameters['counts'] = D
                 parameters['end_time'] = time.time()
                 save_data(parameters, fn_params)
-
             exit(1)
-
 
     if save:
 
