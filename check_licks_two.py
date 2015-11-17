@@ -99,16 +99,16 @@ else:
     use_these = sorted(E.keys())
 
 print use_these   
-plots = dict()
 
+plots = dict()
 cidx = 0
 for k in use_these:
 
     cidx += 1
-    plots[k] = dict()
+    # plots[k] = dict()
 
     evs = E[k]['evs']
-    params = E[k]['params']
+    params = E[k]['params'][0]
     if k=='combo':
         fname = sorted_sessions[1]
         strt_secs = params['start_time']
@@ -131,7 +131,7 @@ for k in use_these:
 
 
     print fname
-    print params['counts']
+    # print params['counts']
 
     animal = os.path.split(os.path.split(datadir)[0])[1] #fname.split('_')[0]
     date = fname.split('_')[0] #fname.split('_')[1]
@@ -139,42 +139,47 @@ for k in use_these:
 
 
     sensor_keys = set([i.keys()[0] for i in evs])
+    print sensor_keys
     events = dict()
     for key in sensor_keys:
         events[key] = [i[key] for i in evs if key in i.keys()]
 
     # trigger_evs = events['output'] # trigger events
     # sensor_evs = evs['sensor'] # sensor events
+    if events: 
+        plots[k] = dict()
 
-    n_triggers_detected = len([t['time'] for t in events['trigger'] if t['index']==params['ext_trigger'] and t['value']])
-    n_sensors_detected = len([t['time'] for t in events['sensor'] if t['index']==params['target_port_channel'] and t['value'] > params['lick_threshold']])
+        n_triggers_detected = len([t['time'] for t in events['trigger'] if t['index']==params['ext_trigger'] and t['value']])
+        n_sensors_detected = len([t['time'] for t in events['sensor'] if t['index']==params['target_port_channel'] and t['value'] > params['lick_threshold']])
 
-    target_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['target_port_channel']]
-    distractor_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['distractor_port_channel']]
+        target_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['target_port_channel']]
+        distractor_vals = [(i['time'], i['value']) for i in events['sensor'] if i['index']==params['distractor_port_channel']]
 
-    trigger_times = [i['time'] for i in events['trigger'] if i['index']==params['ext_trigger'] and i['value'] ]
+        trigger_times = [i['time'] for i in events['trigger'] if i['index']==params['ext_trigger'] and i['value'] ]
 
 
-    # # time.localtime(min(trigger_times))
-    # strt_secs  = params['start_time'] #int(sevs[0]['time'].split('_')[1][0:4])
-    # end_secs = params['end_time'] #int(curr_session[0].split('_')[2][0:4])
+        # # time.localtime(min(trigger_times))
+        # strt_secs  = params['start_time'] #int(sevs[0]['time'].split('_')[1][0:4])
+        # end_secs = params['end_time'] #int(curr_session[0].split('_')[2][0:4])
 
-    # fmt = '%Y%m%d_%H%M%S'
-    # t_start = time.strftime(fmt, time.localtime(strt_secs))
-    # t_end = time.strftime(fmt, time.localtime(end_secs))
+        # fmt = '%Y%m%d_%H%M%S'
+        # t_start = time.strftime(fmt, time.localtime(strt_secs))
+        # t_end = time.strftime(fmt, time.localtime(end_secs))
 
-    taxis = np.linspace(strt_secs, end_secs, num=len(target_vals), endpoint=True)
-    daxis = np.linspace(strt_secs, end_secs, num=len(distractor_vals), endpoint=True)
+        taxis = np.linspace(strt_secs, end_secs, num=len(target_vals), endpoint=True)
+        daxis = np.linspace(strt_secs, end_secs, num=len(distractor_vals), endpoint=True)
 
-    # print sidx
+        # print sidx
 
-    plots[k]['trigger_times'] = trigger_times
-    plots[k]['target_vals'] = target_vals
-    plots[k]['taxis'] = taxis
-    plots[k]['distractor_vals'] = distractor_vals
-    plots[k]['daxis'] = daxis
-    plots[k]['start_time'] = strt_secs
-    plots[k]['end_time'] = end_secs
+        plots[k]['trigger_times'] = trigger_times
+        plots[k]['target_vals'] = target_vals
+        plots[k]['taxis'] = taxis
+        plots[k]['distractor_vals'] = distractor_vals
+        plots[k]['daxis'] = daxis
+        plots[k]['start_time'] = strt_secs
+        plots[k]['end_time'] = end_secs
+    else:
+        continue
 
 #     fig.add_subplot(1,len(use_these),cidx)
 
@@ -359,7 +364,10 @@ T_all_the_data = np.array(list(itertools.chain.from_iterable([plots[k]['target_v
 D_all_the_data = np.array(list(itertools.chain.from_iterable([plots[k]['distractor_vals'] for k in plots.keys()])) )
 time_points_all = [plots[sorted(plots.keys())[0]]['start_time'], plots[sorted(plots.keys())[-1]]['end_time']] # in MIN
 
-y_range = [min([T_all_the_data.min(), D_all_the_data.min()]), max([T_all_the_data.max(), D_all_the_data.max()])]
+if T_all_the_data.any() and D_all_the_data.any():
+    y_range = [min([T_all_the_data.min(), D_all_the_data.min()]), max([T_all_the_data.max(), D_all_the_data.max()])]
+else:
+    y_range = [0, 10]
 
 
 # # Define an annotation-generation function, for subplot titles

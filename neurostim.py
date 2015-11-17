@@ -28,31 +28,6 @@ import cPickle as pkl
 import thread
 import pyglet
 
-parser = optparse.OptionParser()
-parser.add_option('-m', '--mode', type='choice', action="store", dest="mode", default="naked", choices=['naked', 'mworks', 'pulsepal'])
-parser.add_option('-P', '--program', action="store_true", dest="program", default=False, help="program pulse generator only (must be in 'pulsepal' mode)")
-parser.add_option('-S', '--save', action="store_true", dest="save_data", default=False, help="save data")
-parser.add_option('-O', '--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
-parser.add_option('-i', '--id', action="store", dest="animalID", default="test", help="subject ID")
-
-parser.add_option('-c', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation, e.g., '-c1'")
-parser.add_option('-t', '--thresh', action="store", dest="threshold", default="500", help="lick sensor threshold value")
-parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
-
-parser.add_option('-p', '--oneport', action="store_true", dest="one_port", default=False, help="one or two-port task?")
-parser.add_option('-s', '--sound', action="store_true", dest="play_tones", default=False, help="play reward and punish tones?")
-
-(options, args) = parser.parse_args()
-mode = options.mode
-program = options.program
-if program:
-    mode='pulsepal' # override incorrect mode setting  
-play_tones = options.play_tones
-
-output_path = options.output_path
-animalID = options.animalID
-save = options.save_data
-one_port = options.one_port
 
 # ==============================================================================
 # STIMULATION PARAMETERS: EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
@@ -65,13 +40,53 @@ phasic = 2.               # n phases (i.e, biphasic or monophasic)
 
 train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
 # ==============================================================================
+# ==============================================================================
+
+
+
+# ==============================================================================
+# RUNTIME OPTIONS: Run mode, channel programming, sound ON/OFF, save params, etc.
+# ==============================================================================
+parser = optparse.OptionParser()
+parser.add_option('-m', '--mode', type='choice', action="store", dest="mode", default="naked", choices=['naked', 'mworks', 'pulsepal'])
+parser.add_option('-P', '--program', action="store_true", dest="program", default=False, help="program pulse generator only (must be in 'pulsepal' mode)")
+parser.add_option('-S', '--save', action="store_true", dest="save_data", default=False, help="save data")
+parser.add_option('-O', '--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
+parser.add_option('-i', '--id', action="store", dest="animalID", default="test", help="subject ID")
+
+parser.add_option('-c', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation, e.g., '-c1'")
+parser.add_option('-t', '--thresh', action="store", dest="threshold", default="500", help="lick sensor threshold value")
+parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
+
+parser.add_option('-p', '--oneport', action="store_true", dest="one_port", default=False, help="one or two-port task?")
+parser.add_option('-s', '--sound', action="store_true", dest="play_tones", default=False, help="play reward and/or punish tones (set feedback flag)?")
+parser.add_option('-f', '--feedback', action="store_true", dest="give_feedback", default=False, help="play reward/punish tones, enforce timeouts?")
+
+
+(options, args) = parser.parse_args()
+mode = options.mode
+program = options.program
+if program:
+    mode='pulsepal' # override incorrect mode setting
+
+play_tones = options.play_tones
+give_feedback = options.give_feedback
+
+output_path = options.output_path
+animalID = options.animalID
+save = options.save_data
+# ==============================================================================
+# ==============================================================================
+
 
 
 # ==============================================================================
 # Experiment Parameters: Relevant experiment info (channels, triggers, etc.)
 # ==============================================================================
+
+# PulsePal info:
 channel_nums = options.channel_nums             # which PulsePal channel for stim output
-channel_nums = [int(i) for i in channel_nums]   
+channel_nums = [int(i) for i in channel_nums]   # turn into INT for below
 channels = np.zeros(4)
 for i in channel_nums:                          # 0-indexify and turn ON specified channels
     channels[i-1] = 1
@@ -79,10 +94,13 @@ channels = [int(i) for i in channels]           # turn into ints for soft-trigge
 print "Channel nums: ", channel_nums            # print which channels being used
 print "Channel status: ", channels              # channels ON or OFF
 
+
+# Phidget info:
 threshold = float(options.threshold)            # value of Phidget sensor channel that counts as "licking"
 lick_port = int(options.lick_port)              # reward for licking specified port (currently, just reward)
 ext_trigger = 0                                 # D.O. channel on phidget (connect to Trigger Ch 1 on PulsePal)
 
+one_port = options.one_port                     # otherwise, 2 (or 3) port
 if one_port:
     port_names = ["CENTER"]
     target_port = 5                             # default so that Phidget Ch.5 is pump 01 (which is standard for single-port, too)
@@ -97,11 +115,16 @@ else:                                           # TWO ports (or 3?)
         distractor_port = 5
         ignore_port = 1
 
+# Sound / Feedback info:
 if play_tones:
     success_tone = pyglet.media.load('./stimuli/sounds/NRsuccess.wav', streaming=False)
     fail_tone = pyglet.media.load('./stimuli/sounds/failure_DZ.wav', streaming=False)
 
 timeout_time = 5
+postreward_timeout_time = 3
+# ==============================================================================
+# ==============================================================================
+
 
 
 # ==============================================================================
@@ -123,6 +146,9 @@ if save:
     fname = animalID + '_' + datestr + '_params.pkl'
     fn_params = open(os.path.join(output_path, fname), 'wb')
 
+# ==============================================================================
+# ==============================================================================
+
 
 # ==============================================================================
 # MODE SPECIFIC ACTIONS:
@@ -137,16 +163,19 @@ if mode=='mworks':
     sys.path.append('/Library/Application Support/MWorks/Scripting/Python')
     import mworks.conduit
 
-    def say_hello(mevt):
-        # print "called"
-        if mevt.value:
-            print "MWorks connection is G2G!"
-            g2g.append(1)
-        else:
-            # print "Waiting for MW...."
-            g2g.append(0)
+    # def say_hello(mevt):
+    #     g2g = []
+    #     while not (1 in g2g):
 
-        return g2g
+    #         # print "called"
+    #         if mevt.value:
+    #             print "MWorks connection is ready!"
+    #             g2g.append(1)
+    #         else:
+    #             # print "Waiting for MW...."
+    #             g2g.append(0)
+
+        # return g2g
 
     # # separate MW save directory?
     # mw_output_dir = '/tmp/mw_output'
@@ -160,9 +189,11 @@ if mode=='mworks':
     # Check for listen:
     # g2g = []
     # while not (1 in g2g):
-    #     client.register_callback_for_name('hello_world', say_hello)
+    # client.register_callback_for_name('hello_world', say_hello)
 
-    print "LET'S DO IT!!!"
+    # stop_flag = [0]
+    # stim = 0
+    # print "LET'S DO IT!!!"
         # print g2g
 
 
@@ -307,10 +338,9 @@ if mode == 'naked':
     else:
         displayDeviceInfo()
 
+
 # ========= Pulse Pal stuff ==========   
 
-
-# ========== PulsePal imports ==========
 if mode=='pulsepal':
     print "Programming PulsePal..."
 
@@ -329,27 +359,19 @@ if mode=='pulsepal':
         print "PULSEPAL!"
         pulse_port = '/dev/ttyACM0' # port for PulsePal
 
-        # n_pulses = 8                # num of pulses for reward
-        # pulse_width = 2.            # ms: phase1Duration = pulse_width/1000. (s)
-        # pulse_voltage = 5.           # V: phase1Voltage (set output channel 2 to use 7V pulses)
-        # frequency = 25.             # Hz: interPulseInterval = 1./frequency (s), i.e,. time bw pulses
-
         try:        
             # ========== Initialize PulsePal ==========
 
-            pulse = PulsePalObject() # Create a new instance of a PulsePal object
+            pulse = PulsePalObject()                                # Create a new instance of a PulsePal object
             try:
-                pulse.connect(pulse_port) # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
+                pulse.connect(pulse_port)                           # Connect to PulsePal on port COM4 (open port, handshake and receive firmware version)
             except OSError:
-                pulse_port = '/dev/ttyACM1' # port for PulsePal
+                pulse_port = '/dev/ttyACM1'                         # port for PulsePal
                 pulse.connect(pulse_port)
 
-            print(pulse.firmwareVersion) # Print firmware version to the console
+            print(pulse.firmwareVersion)                            # Print firmware version to the console
 
             # ========== Set PulsePal Settings ==========
-
-            # channels = np.zeros(4)
-            # channels[channel_num-1] = 1
 
             print "Output channels: %s" % str(channels)
             print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
@@ -361,62 +383,34 @@ if mode=='pulsepal':
 
             for c in channel_nums:
                 print c
-                pulse.isBiphasic[c] = 1 # parameter arrays are 5 elements long. Use [1] for output channel 1. 
-                pulse.customTrainID[c] = 0 # set to 0 for parametric (non custom train 1 or 2)
+                pulse.isBiphasic[c] = 1                             # parameter arrays are 5 elements long. Use [1] for output channel 1. 
+                pulse.customTrainID[c] = 0                          # set to 0 for parametric (non custom train 1 or 2)
 
-                pulse.interPhaseInterval[c] = 0.          # time between pos and neg pulse for biphasic # min seems to be 0.01s
-                pulse.interPulseInterval[c] = 1./frequency    # time between biphasic pulses
-                pulse.phase1Voltage[c] = pulse_voltage    # (set output channel x to use 7V pulses)
-                pulse.phase2Voltage[c] = -1*pulse_voltage    # (set output channel x to use 7V pulses)
+                pulse.interPhaseInterval[c] = 0.                    # time between pos and neg pulse for biphasic # min seems to be 0.01s
+                pulse.interPulseInterval[c] = 1./frequency          # time between biphasic pulses
+                pulse.phase1Voltage[c] = pulse_voltage              # (set output channel x to use 7V pulses)
+                pulse.phase2Voltage[c] = -1*pulse_voltage           # (set output channel x to use 7V pulses)
                 pulse.phase1Duration[c] = pulse_width/1000.
                 pulse.phase2Duration[c] = pulse_width/1000.
                 pulse.restingVoltage[c] = 0.
 
-                pulse.pulseTrainDuration[c] = train_duration # 0.01 # channel#, train duration (sec)
-                pulse.pulseTrainDelay[c] = 0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
+                pulse.pulseTrainDuration[c] = train_duration        # train duration (sec)
+                pulse.pulseTrainDelay[c] = 0.                       #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
 
-                pulse.burstDuration[c] = 0 #(2*pulse_width) / 1000. #1./frequency.
-                # pulse.interBurstInterval[channel_num] = 1./frequency
-
-                # pulse.triggerMode[c] = 0                      # (0 = normal, 1 = toggle, 2 = pulse gated)
+                pulse.burstDuration[c] = 0 
                 pulse.linkTriggerChannel1[c] = 1
 
-            pulse.triggerMode[1] = 0                            # (0 = normal, 1 = toggle, 2 = pulse gated)
+            pulse.triggerMode[1] = 0                                # Trigger1 or Trigger 2: (0 = normal, 1 = toggle, 2 = pulse gated)
 
-            pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
-
-            # if pulse.isBiphasic[channel_num] == 1:
-            #     phasic = 2
-            # else:
-            #     phasic = 1
-            # train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
+            pulse.syncAllParams()                                   # This call is critical to update PulsePal object settings from last session...!
 
             print "Train duration: %f sec" % train_duration
             print "Biphasic pulses: %s" % str(pulse.isBiphasic)
             print "Press Enter to CONTINUE..."
             chr = sys.stdin.read(1)
 
-            print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+            print "Parameters accepted! Continuing... [Press ENTER to Quit]"
             pulse.setDisplay("Starting! :)", "STIM on CH %s" % str([i for i in channels if i]))
-
-            # pulse.interPhaseInterval[1:5] = channels*0.          # time between pos and neg pulse for biphasic # min seems to be 0.01s
-            # pulse.interPulseInterval[1:5] = [1./frequency]*4    # time between biphasic pulses
-            # pulse.phase1Voltage[1:5] = channels*pulse_voltage    # (set output channel x to use 7V pulses)
-            # pulse.phase2Voltage[1:5] = channels*pulse_voltage    # (set output channel x to use 7V pulses)
-            # pulse.phase1Duration[1:5] = channels*(pulse_width/1000.)
-            # pulse.phase2Duration[1:5] = channels*(pulse_width/1000.)
-
-            # pulse.pulseTrainDuration[1:5] =  channels*train_duration # 0.01 # channel#, train duration (sec)
-            # pulse.pulseTrainDelay[1:5] = channels*0. #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
-
-            # pulse.burstDuration[1:5] = channels*0 #(2*pulse_width) / 1000. #1./frequency.
-            # # pulse.interBurstInterval[channel_num] = 1./frequency
-
-            # pulse.triggerMode[1:5] = channels*0                      # (0 = normal, 1 = toggle, 2 = pulse gated)
-            # pulse.linkTriggerChannel1[1:5] = channels*1
-            # pulse.linkTriggerChannel1[1] = 1
-
-            # pulse.syncAllParams() # This call is critical to update PulsePal object settings from last session...!
 
         except NameError, e:
             print e
@@ -433,10 +427,12 @@ if mode=='pulsepal':
         print "|------------|----------------|-------------|-----------|"
         print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
+        print "Train duration: %f sec" % train_duration
+        print "Biphasic pulses: %s" % str(phasic)
         print "Press Enter to CONTINUE..."
         chr = sys.stdin.read(1)
 
-        print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+        print "Parameters accepted! Continuing... [Press ENTER to Quit]"
 
 else:
     print "Using last saved settings on PulsePal."
@@ -448,10 +444,12 @@ else:
     print "|------------|----------------|-------------|-----------|"
     print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
+    print "Train duration: %f sec" % train_duration
+    print "Biphasic pulses: %s" % str(phasic)
     print "Press Enter to CONTINUE..."
     chr = sys.stdin.read(1)
-
-    print "Parameters accepted! Continuing... [ctrl+C to Quit]"
+    
+    print "Parameters accepted! Continuing... [Press ENTER to Quit]"
 
 
 # ========== DO STUFF ==========
@@ -460,147 +458,126 @@ def input_thread(L):
     # This is a dumb func for usnig Enter as a graceful exit mechanism...
     raw_input()
     L.append(None)
+
     
 def trigger_stim():
 
     L = []
     thread.start_new_thread(input_thread, (L,))
 
-    # D = dict()
-    nt = 0
-    nd = 0
-    nb = 0
-    D['n_targets'] = []
-    D['n_distractors'] = []
-    D['n_both'] = []
-
     while True:
 
-        # print "."
+        target_port_val = device.getSensorValue(target_port)                            # Poll the sensors...
+        distractor_port_val = device.getSensorValue(distractor_port)
 
-        # poll the sensors:
         if one_port:
 
-            if (target_port_val >= threshold):
+            if (target_port_val >= threshold):                                          # IF TARGET PORT LICKED:
 
-                # trigger pulse
-                if mode=='pulsepal':
-                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
+                if mode=='pulsepal':                                                    # SOFT-TRIGGER CHANNELS.
+                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3])
                     pulse.setDisplay("Channel 1", "ZAP!!!")
-                    print pulse.phase1Voltage, pulse.phase2Voltage
                     pulse.setDisplay("Channel 1", "done!!!")
-                else:
-                    # print "Triggering DO channel %i" % ext_trigger
-                    device.setOutputState(ext_trigger, True)    # trigger once
-                    time.sleep(train_duration)                  # wait until train is done
-                    device.setOutputState(ext_trigger, False)   # turn off
+                else:                                   
+                    device.setOutputState(ext_trigger, True)                            # EXT TRIGGER all channels.
+                    time.sleep(train_duration)                                          # Wait until train is done
+                    device.setOutputState(ext_trigger, False)                           # Turn trigger output state off
 
-                nt += 1
+                global nt 
+                nt += 1                                                                 # Increment dummy counter...
                 D['n_targets'].append((time.time(), nt))
 
         else:
 
-            target_port_val = device.getSensorValue(target_port);
-            distractor_port_val = device.getSensorValue(distractor_port)
-
-            if (target_port_val >= threshold) and (distractor_port_val < threshold):
+            if (target_port_val >= threshold) and (distractor_port_val < threshold):    # IF TARGET PORT LICKED:
 
                 if play_tones:
-                    # play tone:
-                    success_tone.play()
+                    success_tone.play()                                                 # PLAY TONES.
 
-                # trigger pulse
-                if mode=='pulsepal':
-                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3]) # Soft-trigger output channels 1, 2 and 4
+                if mode=='pulsepal':                                                    # SOFT-TRIGGER CHANNELS.
+                    pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3])
                     pulse.setDisplay("Channel 1", "ZAP!!!")
-                    print pulse.phase1Voltage, pulse.phase2Voltage
                     pulse.setDisplay("Channel 1", "done!!!")
                 else:
-                    # print "Triggering DO channel %i" % ext_trigger
-                    device.setOutputState(ext_trigger, True)    # trigger once
-                    time.sleep(train_duration)                  # wait until train is done
-                    device.setOutputState(ext_trigger, False)   # turn off
+                    device.setOutputState(ext_trigger, True)                            # EXT TRIGGER all channels.
+                    time.sleep(train_duration)                                          # Wait until train is done
+                    device.setOutputState(ext_trigger, False)                           # Turn trigger output state off
 
+                global nt                                                               # Increment dummy counter...
                 nt += 1
                 D['n_targets'].append((time.time(), nt))
 
-            elif (distractor_port_val >= threshold) and (target_port_val < threshold):
+            elif (distractor_port_val >= threshold) and (target_port_val < threshold):  # IF DISTRACTOR PORT LICKED:
 
-                # force time out [and play sound]
-                now = time.time()
-                while time.time() - now <= timeout_time:
-                    if play_tones:
-                        fail_tone.play()
-                        time.sleep(0.2)
-                    print (time.time() - now)
+                if give_feedback and play_tones:                                        # Force time out [and play sound]
+                    print "In TIMEOUT for %i seconds." % timeout_time
+                    now = time.time()
+                    while time.time() - now <= timeout_time:
+                        if play_tones:
+                            fail_tone.play()
+                            time.sleep(0.2)
 
-                # time.sleep(5)
+                global nd                                                               # Increment dummy counter...
                 nd += 1
                 D['n_distractors'].append((time.time(), nd))
 
-            elif (distractor_port_val >= threshold) and (target_port_val >= threshold):
+            elif (distractor_port_val >= threshold) and (target_port_val >= threshold): # IF BOTH ports licked:
 
-                # force timeout? [and play sound]
-                now = time.time()
-                while time.time() - now <= timeout_time:
-                    if play_tones:
-                        fail_tone.play()
-                        time.sleep(0.2)
+                if give_feedback and play_tones:                                        # Force time out [and play sound]
+                    now = time.time()
+                    print "In TIMEOUT for %i seconds." % timeout_time
+                    while time.time() - now <= timeout_time:
+                        if play_tones:
+                            fail_tone.play()
+                            time.sleep(0.2)
 
-                # time.sleep(5)
+                global nb                                                               # Increment dummy counter...
                 nb += 1
                 D['n_both'].append((time.time(), nb))
 
-        if L: 
+        if L:                                                                           # GTFO.
             print "Exiting loop..."
             break
 
-    # return D
 
+# ========== DO STUFF FOR MW MODE ==========
 
 def trigger_mw():
 
-    def handle_state_mode(mevt):
-        stop_flag.append(mevt.value)
-        return stop_flag
+    ML = []
+    thread.start_new_thread(input_thread, (ML,))
 
+    client.register_callback_for_name('#state_system_mode', handle_state_mode)
+    client.register_callback_for_name('stim_trigger', send_trigger)
 
-    L = []
-    thread.start_new_thread(input_thread, (L,))
+    while not (0 in state_system_mode or 1 in state_system_mode):
 
-    stop_flag = []
-    stim = 0
-    client.register_callback_for_name('stop_flag', handle_state_mode)
-    client.register_callback_for_name('stim_flag', send_trigger)
-
-    while not (1 in stop_flag):
         if stim:
             print "TRIGGER!"
             # device.setOutputState(ext_trigger, True)    # trigger once
             # time.sleep(train_duration)                  # wait until train is done
             # device.setOutputState(ext_trigger, False)   # turn off
-
+            global nt
             nt += 1
-
             D['n_targets'].append((time.time(), nt))
 
-        if L: 
+        if ML: 
             print "Exiting MW loop..."
             break
 
-# def handle_state_mode(mevt):
-#     stop_flag.append(mevt.value)
-#     return stop_flag
+    print "STATE MODES: ", state_system_mode
+
+    client.finalize()
+
+
+def handle_state_mode(mevt):
+    state_system_mode.append(mevt.value)
+    return state_system_mode
 
 
 def send_trigger(mevt):
-    # print "MW says to trigger..."
-    # stim_flag = evt.value
-    if mevt.value:
-        print "MW SENDING TRIGGER"
-        stim = 1
-    else:
-        stim = 0
+    global stim
+    stim = mevt.value
     return stim
 
 
@@ -609,16 +586,18 @@ def save_data(data, fn):
     pkl.dump(data, fn)
     print "save successful: %s" % fn
 
-if __name__ == '__main__':
 
-    # try:
+def initiate_variables():
+    
+    # data counters:
+    D = dict()
+    D['n_targets'] = []
+    D['n_distractors'] = []
+    D['n_both'] = []
 
+    # session parameters:
     parameters = dict()
-
-    print "Press ENTER to quit gracefully..."
-
     strt_time = time.time()
-
     parameters['lick_threshold'] = threshold
     parameters['mode'] = mode
     parameters['sound'] = play_tones
@@ -632,30 +611,41 @@ if __name__ == '__main__':
     parameters['pulse_voltage'] = pulse_voltage
     parameters['frequency'] = frequency
     parameters['start_time'] = strt_time
-    # parameters['end_time'] = time.time()
-    # pkl.dump(parameters, fn_params)
+
+    return D, parameters
+
+
+if __name__ == '__main__':
+
+    D, parameters = initiate_variables()
+    nt = 0
+    nd = 0
+    nb = 0
 
     if program:
-
         print "Re-programming successful"
 
     elif mode=='mworks':
-
-        print "Entering MW mode - listening for callbacks..."
-        D = dict()
-        trigger_mw()
+        try:
+            print "Entering MW mode - listening for callbacks..."
+            state_system_mode = []
+            stim = 0
+            trigger_mw()
+        except RuntimeError as e:
+            print "Runtime Error: %s" % (e)
+            print "Is MWorks protocol running?"
+            if save:
+                print "Phidget error detected, will try to save data..."
+                parameters['counts'] = D
+                parameters['end_time'] = time.time()
+                save_data(parameters, fn_params)
+            exit(1)
 
     else: # mode is "naked" otherwise...
-
         try:
-
             print "Starting session."
-            # counts = trigger_stim()
-            D = dict()
             trigger_stim()
-
         except PhidgetException as e:
-
             print "Phidget Exception %i: %s" % (e.code, e.details)
             if save:
                 print "Phidget error detected, will try to save data..."
@@ -665,30 +655,18 @@ if __name__ == '__main__':
             exit(1)
 
     if save:
-
         print "saving..."
-
         parameters['counts'] = D #counts
         parameters['end_time'] = time.time()
-        # pkl.dump(parameters, fn_params)
-        save_data(parameters, fn_params)
-
+        pkl.dump(parameters, fn_params)
         print parameters
-
         print "DATA SAVED..."
-        print("Press Enter to close")
-        chr = sys.stdin.read(1)
-
-    # except PhidgetException as e:
-    #     print "Phidget Exception %i: %s" % (e.code, e.details)
-    #     exit(1)
 
     print("Press Enter to GTFO")
-
     chr = sys.stdin.read(1)
 
-    print("Closing datafiles...")
     if save:
+        print("Closing datafiles...")
         fn_params.close()
         fn_evs.close()
         print "closed data file"
