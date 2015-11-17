@@ -61,6 +61,8 @@ parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default
 parser.add_option('-p', '--oneport', action="store_true", dest="one_port", default=False, help="one or two-port task?")
 parser.add_option('-s', '--sound', action="store_true", dest="play_tones", default=False, help="play reward and/or punish tones (set feedback flag)?")
 parser.add_option('-f', '--feedback', action="store_true", dest="give_feedback", default=False, help="play reward/punish tones, enforce timeouts?")
+parser.add_option('-H', '--head', action="store_true", dest="sense_head", default=False, help="sense head or not?")
+
 
 
 (options, args) = parser.parse_args()
@@ -69,12 +71,13 @@ program = options.program
 if program:
     mode='pulsepal' # override incorrect mode setting
 
-play_tones = options.play_tones
-give_feedback = options.give_feedback
-
 output_path = options.output_path
 animalID = options.animalID
 save = options.save_data
+
+play_tones = options.play_tones
+give_feedback = options.give_feedback
+sense_head = options.sense_head
 # ==============================================================================
 # ==============================================================================
 
@@ -115,17 +118,17 @@ else:                                           # TWO ports (or 3?)
         distractor_port = 5
         ignore_port = 1
 
-# Sound / Feedback info:
+# DO STUFF WITH HEAD SENSOR HERE:
+head_channel = 4
+head_threshold = 500
+
+# Sound / Feedback info: # FIX THIS BECAUSE IT'S CONFUSING FOR SIGNALING JUST SUCCESS vs. PUNISH
 if play_tones:
     success_tone = pyglet.media.load('./stimuli/sounds/NRsuccess.wav', streaming=False)
     fail_tone = pyglet.media.load('./stimuli/sounds/failure_DZ.wav', streaming=False)
 
 timeout_time = 5
 postreward_timeout_time = 3
-
-# DO STUFF WITH HEAD SENSOR HERE:
-head_sensor = 4
-
 # ==============================================================================
 # ==============================================================================
 
@@ -150,8 +153,9 @@ if save:
     fn_params = open(os.path.join(output_path, fname), 'wb')
 
     # Open write file for head sensing:    
-    fname = animalID + '_' + datestr + '_head.pkl'
-    fn_head = open(os.path.join(output_path, fname), 'wb')
+    if sense_head:
+        fname = animalID + '_' + datestr + '_head.pkl'
+        fn_head = open(os.path.join(output_path, fname), 'wb')
 # ==============================================================================
 # ==============================================================================
 
@@ -253,23 +257,18 @@ if mode == 'naked':
 
     def interfaceKitSensorChanged(e):
         source = e.device
-        # print("InterfaceKit %i: Sensor %i: %i" % (source.getSerialNum(), e.index, e.value))
         if ((e.index==target_port) or (e.index==distractor_port)) and (e.value >=threshold):
-            # print "DETECTED: %i, %i" % (e.index, e.value)
-            # sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
             if save:
                 pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_evs)
             else:
                 print "LICK: %i, %i" % (e.index, e.value)
-        
-        if (e.index==head_sensor):
-            # print "DETECTED: %i, %i" % (e.index, e.value)
-            # sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
-            if save:
-                pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_head)
 
-
-            # print sensor_events
+        if sense_head:
+            if e.index==head_channel:
+                if save:
+                    pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_evs)
+                else:
+                    print "HEAD: %i, %i" % (e.index, e.value)
 
     def interfaceKitOutputChanged(e):
         source = e.device
@@ -356,6 +355,24 @@ if mode == 'naked':
 
 # ========= Pulse Pal stuff ==========   
 
+def use_last_settings():
+    print "Using last saved settings on PulsePal."
+    print "Output channels: %s" % str(channels)
+    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+    print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
+    print "|------------|----------------|-------------|-----------|"
+    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+    print "|------------|----------------|-------------|-----------|"
+    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+
+    print "Train duration: %f sec" % train_duration
+    print "Biphasic pulses: %s" % str(phasic)
+    print "Press Enter to CONTINUE..."
+    chr = sys.stdin.read(1)
+
+    print "Parameters accepted! Continuing... [Press ENTER to Quit]"
+
+
 if mode=='pulsepal':
     print "Programming PulsePal..."
 
@@ -433,38 +450,40 @@ if mode=='pulsepal':
             exit(1)
 
     else:
-        print "Using last saved settings on PulsePal."
-        print "Output channels: %s" % str(channels)
-        print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
-        print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
-        print "|------------|----------------|-------------|-----------|"
-        print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
-        print "|------------|----------------|-------------|-----------|"
-        print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+        # print "Using last saved settings on PulsePal."
+        # print "Output channels: %s" % str(channels)
+        # print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+        # print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
+        # print "|------------|----------------|-------------|-----------|"
+        # print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+        # print "|------------|----------------|-------------|-----------|"
+        # print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
-        print "Train duration: %f sec" % train_duration
-        print "Biphasic pulses: %s" % str(phasic)
-        print "Press Enter to CONTINUE..."
-        chr = sys.stdin.read(1)
+        # print "Train duration: %f sec" % train_duration
+        # print "Biphasic pulses: %s" % str(phasic)
+        # print "Press Enter to CONTINUE..."
+        # chr = sys.stdin.read(1)
 
-        print "Parameters accepted! Continuing... [Press ENTER to Quit]"
+        # print "Parameters accepted! Continuing... [Press ENTER to Quit]"
+        use_last_settings()
 
 else:
-    print "Using last saved settings on PulsePal."
-    print "Output channels: %s" % str(channels)
-    print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
-    print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
-    print "|------------|----------------|-------------|-----------|"
-    print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
-    print "|------------|----------------|-------------|-----------|"
-    print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+    # print "Using last saved settings on PulsePal."
+    # print "Output channels: %s" % str(channels)
+    # print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
+    # print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
+    # print "|------------|----------------|-------------|-----------|"
+    # print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+    # print "|------------|----------------|-------------|-----------|"
+    # print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
-    print "Train duration: %f sec" % train_duration
-    print "Biphasic pulses: %s" % str(phasic)
-    print "Press Enter to CONTINUE..."
-    chr = sys.stdin.read(1)
+    # print "Train duration: %f sec" % train_duration
+    # print "Biphasic pulses: %s" % str(phasic)
+    # print "Press Enter to CONTINUE..."
+    # chr = sys.stdin.read(1)
     
-    print "Parameters accepted! Continuing... [Press ENTER to Quit]"
+    # print "Parameters accepted! Continuing... [Press ENTER to Quit]"
+    use_last_settings()
 
 
 # ========== DO STUFF ==========
@@ -481,20 +500,24 @@ def trigger_stim():
     thread.start_new_thread(input_thread, (L,))
 
     while True:
-
-        target_port_val = device.getSensorValue(target_port)                            # Poll the sensors...
+        target_port_val = device.getSensorValue(target_port)                            # Poll the sensors.
         distractor_port_val = device.getSensorValue(distractor_port)
 
-        if one_port:
+        if sense_head:
+            head_val = device.getSensorValue(head_channel)
+            head_in = head_val <= head_threshold
+        else:
+            head_in = True
 
-            if (target_port_val >= threshold):                                          # IF TARGET PORT LICKED:
+        if one_port:                                                                    # IF SINGLE PORT TASK...
 
-                if mode=='pulsepal':                                                    # SOFT-TRIGGER CHANNELS.
+            if (target_port_val >= threshold) and head_in:                              # If target port licked:
+                if mode=='pulsepal':                                                    # Soft-trigger channels.
                     pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3])
                     pulse.setDisplay("Channel 1", "ZAP!!!")
                     pulse.setDisplay("Channel 1", "done!!!")
                 else:                                   
-                    device.setOutputState(ext_trigger, True)                            # EXT TRIGGER all channels.
+                    device.setOutputState(ext_trigger, True)                            # OR, Ext tRIGGER all channels.
                     time.sleep(train_duration)                                          # Wait until train is done
                     device.setOutputState(ext_trigger, False)                           # Turn trigger output state off
 
@@ -502,27 +525,27 @@ def trigger_stim():
                 nt += 1                                                                 # Increment dummy counter...
                 D['n_targets'].append((time.time(), nt))
 
-        else:
+        else:                                                                           # ELSE, TWO+ PORT TASK...
 
-            if (target_port_val >= threshold) and (distractor_port_val < threshold):    # IF TARGET PORT LICKED:
+            if (target_port_val >= threshold) and (distractor_port_val < threshold)\
+                    and head_in:                                                        # If TARGET port licked:
 
                 if play_tones:
-                    success_tone.play()                                                 # PLAY TONES.
-
-                if mode=='pulsepal':                                                    # SOFT-TRIGGER CHANNELS.
+                    success_tone.play()                                                 # Play tones.
+                if mode=='pulsepal':                                                    # Soft-trigger channels.
                     pulse.triggerOutputChannels(channels[0], channels[1], channels[2], channels[3])
                     pulse.setDisplay("Channel 1", "ZAP!!!")
                     pulse.setDisplay("Channel 1", "done!!!")
                 else:
-                    device.setOutputState(ext_trigger, True)                            # EXT TRIGGER all channels.
+                    device.setOutputState(ext_trigger, True)                            # OR, Ext tRIGGER all channels.
                     time.sleep(train_duration)                                          # Wait until train is done
                     device.setOutputState(ext_trigger, False)                           # Turn trigger output state off
-
                 global nt                                                               # Increment dummy counter...
                 nt += 1
                 D['n_targets'].append((time.time(), nt))
 
-            elif (distractor_port_val >= threshold) and (target_port_val < threshold):  # IF DISTRACTOR PORT LICKED:
+            elif (distractor_port_val >= threshold) and (target_port_val < threshold)\
+                    and head_in:                                                        # If DISTRACTOR port licked:
 
                 if give_feedback and play_tones:                                        # Force time out [and play sound]
                     print "In TIMEOUT for %i seconds." % timeout_time
@@ -536,7 +559,8 @@ def trigger_stim():
                 nd += 1
                 D['n_distractors'].append((time.time(), nd))
 
-            elif (distractor_port_val >= threshold) and (target_port_val >= threshold): # IF BOTH ports licked:
+            elif (distractor_port_val >= threshold) and (target_port_val >= threshold)\
+                    and head_in:                                                        # If BOTH ports licked:
 
                 if give_feedback and play_tones:                                        # Force time out [and play sound]
                     now = time.time()
@@ -616,6 +640,9 @@ def initiate_variables():
     parameters['lick_threshold'] = threshold
     parameters['mode'] = mode
     parameters['sound'] = play_tones
+    parameters['feedback'] = give_feedback
+    parameters['head'] = sense_head
+
     parameters['ext_trigger'] = ext_trigger
     parameters['target_port'] = port_names[lick_port-1]
     parameters['target_port_channel'] = target_port
@@ -669,6 +696,22 @@ if __name__ == '__main__':
                 save_data(parameters, fn_params)
             exit(1)
 
+    print("Press Enter to SAVE & GTFO")
+    chr = sys.stdin.read(1)
+
+    # Close Phidget
+    if mode=='naked':
+        try:
+            print "Closing Phidget..."
+            device.closePhidget()
+        except PhidgetException as e:
+            LocalErrorCatcher(e)
+
+    # Disconnect PulsePal
+    if program:
+        print "Disconnecting PulsePal..."
+        pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
+
     if save:
         print "saving..."
         parameters['counts'] = D #counts
@@ -677,26 +720,13 @@ if __name__ == '__main__':
         print parameters
         print "DATA SAVED..."
 
-    print("Press Enter to GTFO")
-    chr = sys.stdin.read(1)
-
-    if save:
         print("Closing datafiles...")
         fn_params.close()
         fn_evs.close()
-        fn_head.close()
+        if sense_head:
+            fn_head.close()
         print "closed data file"
 
-    # Close Phidget
-    if mode=='naked':
-        try:
-            device.closePhidget()
-        except PhidgetException as e:
-            LocalErrorCatcher(e)
-
-    # Disconnect PulsePal
-    if program:
-        pulse.disconnect() # Sends a termination byte + closes the serial port. PulsePal stores current params to EEPROM.
 
     print("Done.")
     exit(0)
