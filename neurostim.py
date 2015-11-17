@@ -122,9 +122,12 @@ if play_tones:
 
 timeout_time = 5
 postreward_timeout_time = 3
-# ==============================================================================
-# ==============================================================================
 
+# DO STUFF WITH HEAD SENSOR HERE:
+head_sensor = 4
+
+# ==============================================================================
+# ==============================================================================
 
 
 # ==============================================================================
@@ -146,8 +149,12 @@ if save:
     fname = animalID + '_' + datestr + '_params.pkl'
     fn_params = open(os.path.join(output_path, fname), 'wb')
 
+    # Open write file for head sensing:    
+    fname = animalID + '_' + datestr + '_head.pkl'
+    fn_head = open(os.path.join(output_path, fname), 'wb')
 # ==============================================================================
 # ==============================================================================
+
 
 
 # ==============================================================================
@@ -254,6 +261,14 @@ if mode == 'naked':
                 pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_evs)
             else:
                 print "LICK: %i, %i" % (e.index, e.value)
+        
+        if (e.index==head_sensor):
+            # print "DETECTED: %i, %i" % (e.index, e.value)
+            # sensor_events.append({'index':e.index, 'value':e.value,'time':time.time()})
+            if save:
+                pkl.dump({'sensor': {'index':e.index, 'value':e.value,'time':time.time()}}, fn_head)
+
+
             # print sensor_events
 
     def interfaceKitOutputChanged(e):
@@ -669,6 +684,7 @@ if __name__ == '__main__':
         print("Closing datafiles...")
         fn_params.close()
         fn_evs.close()
+        fn_head.close()
         print "closed data file"
 
     # Close Phidget
