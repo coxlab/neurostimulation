@@ -27,18 +27,27 @@ from datetime import datetime
 import cPickle as pkl
 import thread
 import pyglet
-
+import itertools
 
 # ==============================================================================
 # STIMULATION PARAMETERS: EDIT THESE TO CHANGE STIM PARAMS FOR A SESSION
 # ==============================================================================
-n_pulses = 8                # num of pulses for reward
-pulse_width = .700        # ms: phase1Duration = pulse_width/1000. (s)
-pulse_voltage = 1.        # V: phase1Voltage # 100uA/V
-frequency = 100.          # Hz: interPulseInterval in (s) = time bw pulses
-phasic = 2.               # n phases (i.e, biphasic or monophasic)
+# Channel 1 is always smallest ('pre-reward') and triggered off of TRIG 2
 
-train_duration = n_pulses * (((pulse_width/1000.) * phasic) + 1./frequency)
+pulse_width = np.array([0.1, 0.7, 0.7, 0.7])        # ms: phase1Duration = pulse_width/1000. (s)
+pulse_voltage = np.array([2., 1., 1., 1.])          # V: phase1Voltage # 100uA/V
+frequency = np.array([30., 100., 80., 60.])         # Hz: interPulseInterval in (s) = time bw pulses
+phasic = np.array([2., 2., 2., 2.])                 # n phases (i.e, biphasic or monophasic)
+
+train_duration = [[0.500]]                          # s: First set trigger2 train (train dur in seconds)
+n_pulses_set = train_duration[0][0] * frequency[0]  # Calculate num pulses for given freq and dur
+
+n_pulses = np.array([n_pulses_set, 8*3, 8*3, 8*3])  # s: Then, set num of pulses for reward manually for other channels
+
+train_duration_calc = list(n_pulses[1:4] * (((pulse_width[1:4]/1000.) * phasic[1:4]) + 1./frequency[1:4]))
+train_duration.append(train_duration_calc)          # s
+train_duration = list(itertools.chain.from_iterable(train_duration))
+
 # ==============================================================================
 # ==============================================================================
 
@@ -54,7 +63,9 @@ parser.add_option('-S', '--save', action="store_true", dest="save_data", default
 parser.add_option('-O', '--output-path', action="store", dest="output_path", default="/tmp/data", help="data output path")
 parser.add_option('-i', '--id', action="store", dest="animalID", default="test", help="subject ID")
 
-parser.add_option('-c', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation, e.g., '-c1'")
+parser.add_option('-C', '--channel', action="append", default=[],  dest="channel_nums", help="output channels for stimulation, e.g., '-c1'")
+parser.add_option('-T', '--trigger2', action="store_true", default=False,  dest="alt_trigger", help="trigger with Trigger1 instead of 2")
+
 parser.add_option('-t', '--thresh', action="store", dest="threshold", default="500", help="lick sensor threshold value")
 parser.add_option('-l', '--lick-port', action="store", dest="lick_port", default="1", help="left (1) or right(2) lickport")
 
@@ -70,6 +81,7 @@ mode = options.mode
 program = options.program
 if program:
     mode='pulsepal' # override incorrect mode setting
+alt_trigger = options.alt_trigger
 
 output_path = options.output_path
 animalID = options.animalID
@@ -408,41 +420,62 @@ if mode=='pulsepal':
             print "Output channels: %s" % str(channels)
             print "Target port: %s (channel %i)" % (port_names[lick_port - 1], target_port)
             print "Distractor port: %s (channel %i)" % (port_names[ignore_port - 1], distractor_port)
-            print "|------------|----------------|-------------|-----------|"
-            print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
-            print "|------------|----------------|-------------|-----------|"
-            print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
+            # print "|------------|----------------|-------------|-----------|"
+            # print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+            # print "|------------|----------------|-------------|-----------|"
+            # print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses, pulse_width, frequency, pulse_voltage)
 
+            pulse.linkTriggerChannel1[0:5] = [1]*5
+            pulse.linkTriggerChannel2[0:5] = [1]*5
             for c in channel_nums:
-                print c
+
+                print "CHANNEL %i" % c
+                print "|------------|----------------|-------------|-----------|"
+                print "|- N pulses -|- plulse width -|- frequency -|- voltage -|"
+                print "|------------|----------------|-------------|-----------|"
+                print "|-        %i -|-     %2.3f ms -|-  %2.2f Hz -|-  %2.2f V -|" % (n_pulses[c-1], pulse_width[c-1], frequency[c-1], pulse_voltage[c-1])
+
+
+                # print c
                 pulse.isBiphasic[c] = 1                             # parameter arrays are 5 elements long. Use [1] for output channel 1. 
                 pulse.customTrainID[c] = 0                          # set to 0 for parametric (non custom train 1 or 2)
 
                 pulse.interPhaseInterval[c] = 0.                    # time between pos and neg pulse for biphasic # min seems to be 0.01s
-                pulse.interPulseInterval[c] = 1./frequency          # time between biphasic pulses
-                pulse.phase1Voltage[c] = pulse_voltage              # (set output channel x to use 7V pulses)
-                pulse.phase2Voltage[c] = -1*pulse_voltage           # (set output channel x to use 7V pulses)
-                pulse.phase1Duration[c] = pulse_width/1000.
-                pulse.phase2Duration[c] = pulse_width/1000.
+                pulse.interPulseInterval[c] = 1./frequency[c-1]          # time between biphasic pulses
+                pulse.phase1Voltage[c] = pulse_voltage[c-1]              # (set output channel x to use 7V pulses)
+                pulse.phase2Voltage[c] = -1*pulse_voltage[c-1]           # (set output channel x to use 7V pulses)
+                pulse.phase1Duration[c] = pulse_width[c-1]/1000.
+                pulse.phase2Duration[c] = pulse_width[c-1]/1000.
                 pulse.restingVoltage[c] = 0.
 
-                pulse.pulseTrainDuration[c] = train_duration        # train duration (sec)
+                pulse.pulseTrainDuration[c] = train_duration[c-1]        # train duration (sec)
                 pulse.pulseTrainDelay[c] = 0.                       #(0s - 3600s, 0.0001s resolution, 0.00001s precision)
 
-                pulse.burstDuration[c] = 0 
-                pulse.linkTriggerChannel1[c] = 1
+                pulse.burstDuration[c] = 0
+                print c
+                if alt_trigger and c==1:
+                    pulse.linkTriggerChannel1[c] = 1
+                    pulse.linkTriggerChannel2[c] = 0
+                else:
+                    pulse.linkTriggerChannel1[c] = 0
+                    pulse.linkTriggerChannel2[c] = 1
+
+                print "Train duration: %f sec" % train_duration[c-1]
+                print "Biphasic pulses: %s" % str(pulse.isBiphasic)
 
             pulse.triggerMode[1] = 0                                # Trigger1 or Trigger 2: (0 = normal, 1 = toggle, 2 = pulse gated)
-
+            pulse.triggerMode[2] = 0
+            print "Link Trigg1: ", pulse.linkTriggerChannel1
+            print "Link Trigg2: ", pulse.linkTriggerChannel2
             pulse.syncAllParams()                                   # This call is critical to update PulsePal object settings from last session...!
 
-            print "Train duration: %f sec" % train_duration
-            print "Biphasic pulses: %s" % str(pulse.isBiphasic)
+            # print "Train duration: %f sec" % train_duration[c-1]
+            # print "Biphasic pulses: %s" % str(pulse.isBiphasic)
             print "Press Enter to CONTINUE..."
             chr = sys.stdin.read(1)
 
             print "Parameters accepted! Continuing... [Press ENTER to Quit]"
-            pulse.setDisplay("Starting! :)", "STIM on CH %s" % str([i for i in channels if i]))
+            pulse.setDisplay("Starting! :)", "STIM on CH %s" % str([i for i in channel_nums if i]))
 
         except NameError, e:
             print e
